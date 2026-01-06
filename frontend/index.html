@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMARC Report Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 DMARC Report Dashboard</h1>
+            <button id="ingestBtn" class="btn-primary">🔄 Trigger Ingest</button>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Reports</h3>
+                <div id="totalReports" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Pass Rate</h3>
+                <div id="passRate" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Fail Rate</h3>
+                <div id="failRate" class="stat-value">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Messages</h3>
+                <div id="totalMessages" class="stat-value">-</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h2>DMARC Results Over Time</h2>
+                <canvas id="timelineChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Results by Domain</h2>
+                <canvas id="domainChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h2>Top Source IPs</h2>
+            <canvas id="sourceIpChart"></canvas>
+        </div>
+
+        <div class="table-container">
+            <h2>Recent Reports</h2>
+            <table id="reportsTable">
+                <thead>
+                    <tr>
+                        <th>Date Range</th>
+                        <th>Organization</th>
+                        <th>Domain</th>
+                        <th>Total Messages</th>
+                        <th>Pass/Fail</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="reportsTableBody">
+                    <tr>
+                        <td colspan="6" class="loading">Loading reports...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
