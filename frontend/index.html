@@ -11,8 +11,39 @@
     <div class="container">
         <header>
             <h1>📊 DMARC Report Dashboard</h1>
-            <button id="ingestBtn" class="btn-primary">🔄 Trigger Ingest</button>
+            <div class="header-actions">
+                <button id="ingestBtn" class="btn-primary">🔄 Process Reports</button>
+                <button id="exportBtn" class="btn-secondary">📥 Export CSV</button>
+                <button id="refreshBtn" class="btn-secondary">↻ Refresh</button>
+            </div>
         </header>
+
+        <!-- Filters -->
+        <div class="filters">
+            <div class="filter-group">
+                <label for="domainFilter">Domain:</label>
+                <select id="domainFilter">
+                    <option value="">All Domains</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="dateRangeFilter">Date Range:</label>
+                <select id="dateRangeFilter">
+                    <option value="7">Last 7 days</option>
+                    <option value="30" selected>Last 30 days</option>
+                    <option value="90">Last 90 days</option>
+                    <option value="custom">Custom...</option>
+                </select>
+            </div>
+            <div class="filter-group custom-date" style="display: none;">
+                <label for="startDate">Start:</label>
+                <input type="date" id="startDate">
+                <label for="endDate">End:</label>
+                <input type="date" id="endDate">
+            </div>
+            <button id="applyFiltersBtn" class="btn-small">Apply Filters</button>
+            <button id="clearFiltersBtn" class="btn-small">Clear</button>
+        </div>
 
         <div class="stats-grid">
             <div class="stat-card">
@@ -39,14 +70,20 @@
                 <canvas id="timelineChart"></canvas>
             </div>
             <div class="chart-container">
-                <h2>Results by Domain</h2>
+                <h2>Results by Domain (Click to filter)</h2>
                 <canvas id="domainChart"></canvas>
             </div>
         </div>
 
-        <div class="chart-container">
-            <h2>Top Source IPs</h2>
-            <canvas id="sourceIpChart"></canvas>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h2>Top Source IPs</h2>
+                <canvas id="sourceIpChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Disposition Breakdown</h2>
+                <canvas id="dispositionChart"></canvas>
+            </div>
         </div>
 
         <div class="table-container">
@@ -72,6 +109,19 @@
     </div>
 
     <div id="notification" class="notification"></div>
+
+    <!-- Report Detail Modal -->
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Report Details</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body" id="reportModalBody">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
 
     <script src="js/app.js"></script>
 </body>

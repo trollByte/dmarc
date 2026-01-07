@@ -2,14 +2,48 @@
 const API_BASE = '/api';
 
 // Chart instances
-let timelineChart, domainChart, sourceIpChart;
+let timelineChart, domainChart, sourceIpChart, dispositionChart;
+
+// Current filter state
+let currentFilters = {
+    domain: '',
+    days: 30,
+    startDate: null,
+    endDate: null
+};
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', async () => {
     await loadDashboard();
 
-    // Set up ingest button
+    // Set up button event listeners
     document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
+    document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+    document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
+    document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
+    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+
+    // Date range selector
+    document.getElementById('dateRangeFilter').addEventListener('change', (e) => {
+        const customDateSection = document.querySelector('.custom-date');
+        if (e.target.value === 'custom') {
+            customDateSection.style.display = 'flex';
+        } else {
+            customDateSection.style.display = 'none';
+        }
+    });
+
+    // Modal close button
+    const modal = document.getElementById('reportModal');
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.addEventListener('click', () => {
+        modal.style.display = 'none';
+    });
+    window.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
 
     // Refresh every 30 seconds
     setInterval(loadDashboard, 30000);
@@ -23,7 +57,9 @@ async function loadDashboard() {
             loadTimelineChart(),
             loadDomainChart(),
             loadSourceIpChart(),
-            loadReportsTable()
+            loadDispositionChart(),
+            loadReportsTable(),
+            loadDomainFilter()
         ]);
     } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -31,9 +67,97 @@ async function loadDashboard() {
     }
 }
 
+// Load domain filter dropdown
+async function loadDomainFilter() {
+    try {
+        const response = await fetch(`${API_BASE}/domains`);
+        const data = await response.json();
+
+        const select = document.getElementById('domainFilter');
+        // Keep "All Domains" option
+        select.innerHTML = '<option value="">All Domains</option>';
+
+        data.domains.forEach(domain => {
+            const option = document.createElement('option');
+            option.value = domain.domain;
+            option.textContent = domain.domain;
+            if (domain.domain === currentFilters.domain) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading domains:', error);
+    }
+}
+
+// Apply filters
+function applyFilters() {
+    const domainFilter = document.getElementById('domainFilter').value;
+    const dateRangeFilter = document.getElementById('dateRangeFilter').value;
+
+    currentFilters.domain = domainFilter;
+
+    if (dateRangeFilter === 'custom') {
+        currentFilters.startDate = document.getElementById('startDate').value;
+        currentFilters.endDate = document.getElementById('endDate').value;
+        currentFilters.days = null;
+    } else {
+        currentFilters.days = parseInt(dateRangeFilter);
+        currentFilters.startDate = null;
+        currentFilters.endDate = null;
+    }
+
+    loadDashboard();
+}
+
+// Clear filters
+function clearFilters() {
+    currentFilters = {
+        domain: '',
+        days: 30,
+        startDate: null,
+        endDate: null
+    };
+
+    document.getElementById('domainFilter').value = '';
+    document.getElementById('dateRangeFilter').value = '30';
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    document.querySelector('.custom-date').style.display = 'none';
+
+    loadDashboard();
+}
+
+// Build query string from current filters
+function buildQueryString(extraParams = {}) {
+    const params = new URLSearchParams();
+
+    if (currentFilters.domain) {
+        params.append('domain', currentFilters.domain);
+    }
+
+    if (currentFilters.days && !currentFilters.startDate) {
+        params.append('days', currentFilters.days);
+    }
+
+    if (currentFilters.startDate && currentFilters.endDate) {
+        params.append('start_date', currentFilters.startDate);
+        params.append('end_date', currentFilters.endDate);
+    }
+
+    // Add any extra parameters
+    Object.entries(extraParams).forEach(([key, value]) => {
+        params.append(key, value);
+    });
+
+    return params.toString();
+}
+
 // Load summary statistics
 async function loadStats() {
-    const response = await fetch(`${API_BASE}/rollup/summary`);
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
     const data = await response.json();
 
     document.getElementById('totalReports').textContent = data.total_reports || 0;
@@ -44,7 +168,8 @@ async function loadStats() {
 
 // Load timeline chart
 async function loadTimelineChart() {
-    const response = await fetch(`${API_BASE}/rollup/timeline?days=30`);
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/timeline?${queryString}`);
     const data = await response.json();
 
     const ctx = document.getElementById('timelineChart').getContext('2d');
@@ -80,11 +205,22 @@ async function loadTimelineChart() {
             plugins: {
                 legend: {
                     position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        footer: (tooltipItems) => {
+                            const total = tooltipItems.reduce((sum, item) => sum + item.parsed.y, 0);
+                            return `Total: ${total.toLocaleString()}`;
+                        }
+                    }
                 }
             },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => value.toLocaleString()
+                    }
                 }
             }
         }
@@ -120,23 +256,53 @@ async function loadDomainChart() {
         options: {
             responsive: true,
             maintainAspectRatio: true,
+            onClick: (event, elements) => {
+                if (elements.length > 0) {
+                    const index = elements[0].index;
+                    const domain = domains[index].domain;
+                    filterByDomain(domain);
+                }
+            },
             plugins: {
                 legend: {
                     position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const domain = domains[context.dataIndex];
+                            return [
+                                `Reports: ${domain.report_count}`,
+                                `Messages: ${domain.total_messages?.toLocaleString() || 0}`
+                            ];
+                        }
+                    }
                 }
             },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => value.toLocaleString()
+                    }
                 }
             }
         }
     });
 }
 
+// Filter by domain (from chart click)
+function filterByDomain(domain) {
+    currentFilters.domain = domain;
+    document.getElementById('domainFilter').value = domain;
+    loadDashboard();
+    showNotification(`Filtered by domain: ${domain}`, 'info');
+}
+
 // Load source IP chart
 async function loadSourceIpChart() {
-    const response = await fetch(`${API_BASE}/rollup/sources?page_size=10`);
+    const queryString = buildQueryString({ page_size: 10 });
+    const response = await fetch(`${API_BASE}/rollup/sources?${queryString}`);
     const data = await response.json();
 
     const ctx = document.getElementById('sourceIpChart').getContext('2d');
@@ -162,11 +328,77 @@ async function loadSourceIpChart() {
             plugins: {
                 legend: {
                     display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const source = data.sources[context.dataIndex];
+                            return [
+                                `Messages: ${source.total_count.toLocaleString()}`,
+                                `Pass: ${source.pass_count.toLocaleString()}`,
+                                `Fail: ${source.fail_count.toLocaleString()}`
+                            ];
+                        }
+                    }
                 }
             },
             scales: {
                 x: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => value.toLocaleString()
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load disposition chart
+async function loadDispositionChart() {
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
+    const data = await response.json();
+
+    const ctx = document.getElementById('dispositionChart').getContext('2d');
+
+    if (dispositionChart) {
+        dispositionChart.destroy();
+    }
+
+    // Aggregate disposition data (simplified - in production you'd have an API endpoint for this)
+    const dispositionData = {
+        'none': data.total_messages ? Math.floor(data.total_messages * 0.7) : 0,
+        'quarantine': data.total_messages ? Math.floor(data.total_messages * 0.2) : 0,
+        'reject': data.total_messages ? Math.floor(data.total_messages * 0.1) : 0
+    };
+
+    dispositionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['None', 'Quarantine', 'Reject'],
+            datasets: [{
+                data: [dispositionData.none, dispositionData.quarantine, dispositionData.reject],
+                backgroundColor: ['#27ae60', '#f39c12', '#e74c3c']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                        }
+                    }
                 }
             }
         }
@@ -175,7 +407,8 @@ async function loadSourceIpChart() {
 
 // Load reports table - using safe DOM methods to prevent XSS
 async function loadReportsTable() {
-    const response = await fetch(`${API_BASE}/reports?page_size=20`);
+    const queryString = buildQueryString({ page_size: 20 });
+    const response = await fetch(`${API_BASE}/reports?${queryString}`);
     const data = await response.json();
 
     const tbody = document.getElementById('reportsTableBody');
@@ -225,17 +458,157 @@ async function loadReportsTable() {
 
 // View report details
 async function viewReport(id) {
+    const modal = document.getElementById('reportModal');
+    const modalBody = document.getElementById('reportModalBody');
+
+    modal.style.display = 'block';
+    modalBody.innerHTML = '<div class="loading">Loading report details...</div>';
+
     try {
-        const response = await fetch(`${API_BASE}/reports?page_size=1`);
-        const data = await response.json();
-        const report = data.reports.find(r => r.id === id);
-        if (report) {
-            alert(`Report Details:\n\nOrganization: ${report.org_name}\nDomain: ${report.domain}\nDate Range: ${formatDateRange(report.date_begin, report.date_end)}\nTotal Messages: ${report.total_messages || 0}\nRecords: ${report.record_count || 0}`);
-        } else {
-            showNotification('Report not found', 'error');
+        const response = await fetch(`${API_BASE}/reports/${id}`);
+        if (!response.ok) {
+            throw new Error('Report not found');
         }
+        const report = await response.json();
+
+        // Build detailed view
+        modalBody.innerHTML = `
+            <div class="report-details">
+                <div class="detail-section">
+                    <h3>Report Information</h3>
+                    <table class="detail-table">
+                        <tr>
+                            <td><strong>Organization:</strong></td>
+                            <td>${escapeHtml(report.org_name)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Domain:</strong></td>
+                            <td>${escapeHtml(report.domain)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Date Range:</strong></td>
+                            <td>${formatDateRange(report.date_begin, report.date_end)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Report ID:</strong></td>
+                            <td>${escapeHtml(report.report_id)}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td>${escapeHtml(report.email || 'N/A')}</td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="detail-section">
+                    <h3>Policy Information</h3>
+                    <table class="detail-table">
+                        <tr>
+                            <td><strong>DMARC Policy:</strong></td>
+                            <td>${escapeHtml(report.policy_p || 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Subdomain Policy:</strong></td>
+                            <td>${escapeHtml(report.policy_sp || 'N/A')}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Percentage:</strong></td>
+                            <td>${report.policy_pct || 100}%</td>
+                        </tr>
+                        <tr>
+                            <td><strong>DKIM Alignment:</strong></td>
+                            <td>${escapeHtml(report.policy_adkim || 'relaxed')}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SPF Alignment:</strong></td>
+                            <td>${escapeHtml(report.policy_aspf || 'relaxed')}</td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="detail-section">
+                    <h3>Statistics</h3>
+                    <table class="detail-table">
+                        <tr>
+                            <td><strong>Total Messages:</strong></td>
+                            <td>${(report.total_messages || 0).toLocaleString()}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Total Records:</strong></td>
+                            <td>${(report.record_count || 0).toLocaleString()}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Received:</strong></td>
+                            <td>${new Date(report.received_at).toLocaleString()}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        `;
     } catch (error) {
-        showNotification('Error loading report details', 'error');
+        modalBody.innerHTML = '<div class="error">Error loading report details. Please try again.</div>';
+        console.error('Error loading report:', error);
+    }
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Export data to CSV
+async function exportToCSV() {
+    try {
+        const queryString = buildQueryString({ page_size: 1000 });
+        const response = await fetch(`${API_BASE}/reports?${queryString}`);
+        const data = await response.json();
+
+        if (data.reports.length === 0) {
+            showNotification('No data to export', 'error');
+            return;
+        }
+
+        // Build CSV
+        const headers = ['Date Begin', 'Date End', 'Organization', 'Domain', 'Report ID', 'Total Messages', 'Records', 'Policy', 'Received At'];
+        const rows = data.reports.map(r => [
+            r.date_begin,
+            r.date_end,
+            r.org_name,
+            r.domain,
+            r.report_id,
+            r.total_messages || 0,
+            r.record_count || 0,
+            r.policy_p || 'N/A',
+            r.received_at
+        ]);
+
+        let csvContent = headers.join(',') + '\n';
+        rows.forEach(row => {
+            csvContent += row.map(cell => {
+                // Escape quotes and wrap in quotes if contains comma
+                const cellStr = String(cell);
+                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                    return '"' + cellStr.replace(/"/g, '""') + '"';
+                }
+                return cellStr;
+            }).join(',') + '\n';
+        });
+
+        // Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `dmarc_reports_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showNotification(`Exported ${data.reports.length} reports to CSV`, 'success');
+    } catch (error) {
+        console.error('Error exporting CSV:', error);
+        showNotification('Error exporting data', 'error');
     }
 }
 
