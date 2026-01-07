@@ -25,6 +25,7 @@ services:
       DATABASE_URL: postgresql://dmarc:dmarc@db:5432/dmarc
     volumes:
       - ./backend:/app
+      - app_logs:/app/logs
     ports:
       - "8000:8000"
     depends_on:
@@ -45,3 +46,4 @@ services:
 
 volumes:
   postgres_data:
+  app_logs:

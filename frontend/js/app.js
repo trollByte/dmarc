@@ -33,18 +33,18 @@ async function loadDashboard() {
 
 // Load summary statistics
 async function loadStats() {
-    const response = await fetch(`${API_BASE}/stats/summary`);
+    const response = await fetch(`${API_BASE}/rollup/summary`);
     const data = await response.json();
 
     document.getElementById('totalReports').textContent = data.total_reports || 0;
     document.getElementById('totalMessages').textContent = data.total_messages?.toLocaleString() || 0;
-    document.getElementById('passRate').textContent = data.pass_rate ? `${data.pass_rate.toFixed(1)}%` : '0%';
-    document.getElementById('failRate').textContent = data.fail_rate ? `${data.fail_rate.toFixed(1)}%` : '0%';
+    document.getElementById('passRate').textContent = data.pass_percentage ? `${data.pass_percentage.toFixed(1)}%` : '0%';
+    document.getElementById('failRate').textContent = data.fail_percentage ? `${data.fail_percentage.toFixed(1)}%` : '0%';
 }
 
 // Load timeline chart
 async function loadTimelineChart() {
-    const response = await fetch(`${API_BASE}/stats/by-date`);
+    const response = await fetch(`${API_BASE}/rollup/timeline?days=30`);
     const data = await response.json();
 
     const ctx = document.getElementById('timelineChart').getContext('2d');
@@ -56,18 +56,18 @@ async function loadTimelineChart() {
     timelineChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.map(d => d.date),
+            labels: data.timeline.map(d => d.date),
             datasets: [
                 {
                     label: 'Pass',
-                    data: data.map(d => d.pass_count),
+                    data: data.timeline.map(d => d.pass_count),
                     borderColor: '#27ae60',
                     backgroundColor: 'rgba(39, 174, 96, 0.1)',
                     tension: 0.4
                 },
                 {
                     label: 'Fail',
-                    data: data.map(d => d.fail_count),
+                    data: data.timeline.map(d => d.fail_count),
                     borderColor: '#e74c3c',
                     backgroundColor: 'rgba(231, 76, 60, 0.1)',
                     tension: 0.4
@@ -93,7 +93,7 @@ async function loadTimelineChart() {
 
 // Load domain chart
 async function loadDomainChart() {
-    const response = await fetch(`${API_BASE}/stats/by-domain?limit=10`);
+    const response = await fetch(`${API_BASE}/domains`);
     const data = await response.json();
 
     const ctx = document.getElementById('domainChart').getContext('2d');
@@ -102,20 +102,18 @@ async function loadDomainChart() {
         domainChart.destroy();
     }
 
+    // Limit to top 10 domains
+    const domains = data.domains.slice(0, 10);
+
     domainChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: data.map(d => d.domain),
+            labels: domains.map(d => d.domain),
             datasets: [
                 {
-                    label: 'Pass',
-                    data: data.map(d => d.pass_count),
-                    backgroundColor: '#27ae60'
-                },
-                {
-                    label: 'Fail',
-                    data: data.map(d => d.fail_count),
-                    backgroundColor: '#e74c3c'
+                    label: 'Reports',
+                    data: domains.map(d => d.report_count),
+                    backgroundColor: '#3498db'
                 }
             ]
         },
@@ -128,11 +126,7 @@ async function loadDomainChart() {
                 }
             },
             scales: {
-                x: {
-                    stacked: true
-                },
                 y: {
-                    stacked: true,
                     beginAtZero: true
                 }
             }
@@ -142,7 +136,7 @@ async function loadDomainChart() {
 
 // Load source IP chart
 async function loadSourceIpChart() {
-    const response = await fetch(`${API_BASE}/stats/by-source-ip?limit=10`);
+    const response = await fetch(`${API_BASE}/rollup/sources?page_size=10`);
     const data = await response.json();
 
     const ctx = document.getElementById('sourceIpChart').getContext('2d');
@@ -154,10 +148,10 @@ async function loadSourceIpChart() {
     sourceIpChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: data.map(d => d.source_ip),
+            labels: data.sources.map(d => d.source_ip),
             datasets: [{
                 label: 'Message Count',
-                data: data.map(d => d.count),
+                data: data.sources.map(d => d.total_count),
                 backgroundColor: '#3498db'
             }]
         },
@@ -181,7 +175,7 @@ async function loadSourceIpChart() {
 
 // Load reports table - using safe DOM methods to prevent XSS
 async function loadReportsTable() {
-    const response = await fetch(`${API_BASE}/reports?limit=20`);
+    const response = await fetch(`${API_BASE}/reports?page_size=20`);
     const data = await response.json();
 
     const tbody = document.getElementById('reportsTableBody');
@@ -213,19 +207,11 @@ async function loadReportsTable() {
 
         // Total Messages
         const totalCell = row.insertCell();
-        totalCell.textContent = report.total_records?.toLocaleString() || 0;
+        totalCell.textContent = report.total_messages?.toLocaleString() || 0;
 
-        // Pass/Fail
+        // Pass/Fail - for now show record count
         const passFailCell = row.insertCell();
-        const passSpan = document.createElement('span');
-        passSpan.className = 'pass';
-        passSpan.textContent = report.pass_count || 0;
-        const failSpan = document.createElement('span');
-        failSpan.className = 'fail';
-        failSpan.textContent = report.fail_count || 0;
-        passFailCell.appendChild(passSpan);
-        passFailCell.appendChild(document.createTextNode(' / '));
-        passFailCell.appendChild(failSpan);
+        passFailCell.textContent = `${report.record_count} records`;
 
         // Actions
         const actionsCell = row.insertCell();
@@ -240,38 +226,52 @@ async function loadReportsTable() {
 // View report details
 async function viewReport(id) {
     try {
-        const response = await fetch(`${API_BASE}/reports/${id}`);
+        const response = await fetch(`${API_BASE}/reports?page_size=1`);
         const data = await response.json();
-        alert(`Report Details:\n\nOrganization: ${data.org_name}\nDomain: ${data.domain}\nDate Range: ${formatDateRange(data.date_begin, data.date_end)}\nTotal Records: ${data.records?.length || 0}`);
+        const report = data.reports.find(r => r.id === id);
+        if (report) {
+            alert(`Report Details:\n\nOrganization: ${report.org_name}\nDomain: ${report.domain}\nDate Range: ${formatDateRange(report.date_begin, report.date_end)}\nTotal Messages: ${report.total_messages || 0}\nRecords: ${report.record_count || 0}`);
+        } else {
+            showNotification('Report not found', 'error');
+        }
     } catch (error) {
         showNotification('Error loading report details', 'error');
     }
 }
 
-// Trigger manual ingest
+// Trigger manual ingest/process
 async function triggerIngest() {
     const btn = document.getElementById('ingestBtn');
     btn.disabled = true;
     btn.textContent = '⏳ Processing...';
 
     try {
-        const response = await fetch(`${API_BASE}/ingest/trigger`, {
-            method: 'POST'
+        const response = await fetch(`${API_BASE}/process/trigger`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
 
         const data = await response.json();
 
-        if (response.ok) {
-            showNotification(data.message || 'Ingest completed successfully', 'success');
-            setTimeout(loadDashboard, 2000);
+        if (data.reports_processed > 0 || data.reports_failed > 0) {
+            showNotification(data.message, 'success');
+            // Reload dashboard to show new data
+            await loadDashboard();
         } else {
-            showNotification(data.detail || 'Ingest failed', 'error');
+            showNotification('No pending reports to process', 'info');
         }
     } catch (error) {
-        showNotification('Error triggering ingest', 'error');
+        console.error('Error triggering process:', error);
+        showNotification('Error triggering process', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '🔄 Trigger Ingest';
+        btn.textContent = '🔄 Process Reports';
     }
 }
 

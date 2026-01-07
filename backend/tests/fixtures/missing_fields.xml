@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <report_metadata>
+    <org_name>minimal.com</org_name>
+    <report_id>minimal123</report_id>
+    <date_range>
+      <begin>1704067200</begin>
+      <end>1704153600</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>example.com</domain>
+    <p>none</p>
+    <!-- Missing optional fields like adkim, aspf, sp -->
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>192.0.2.100</source_ip>
+      <count>1</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <!-- Missing dkim and spf -->
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+      <!-- Missing envelope_from -->
+    </identifiers>
+    <auth_results>
+      <!-- Empty auth results -->
+    </auth_results>
+  </record>
+</feedback>

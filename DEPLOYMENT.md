@@ -85,6 +85,36 @@ docker compose exec db psql -U dmarc -d dmarc
 
 ## Production Deployment
 
+### Production Features
+
+The application includes built-in production-ready features:
+
+#### 1. Background Job Scheduler
+- **Automatic report processing**: Every 5 minutes
+- **Email ingestion**: Every 15 minutes (when configured)
+- Managed by APScheduler, starts automatically with the application
+
+#### 2. Production Logging
+- **Rotating file logs**: 10MB max per file, 5 backups kept
+- **JSON logging**: Enable with `LOG_JSON=true` for log aggregation
+- **Request logging**: Track all API requests with duration and status
+- **Error logging**: Separate error log file for critical issues
+
+#### 3. API Authentication
+- **API key validation**: Protect endpoints with `X-API-Key` header
+- **Configurable**: Enable with `REQUIRE_API_KEY=true`
+- **Multi-key support**: Comma-separated list in `API_KEYS` env var
+
+#### 4. Comprehensive Error Handling
+- **Standardized error responses**: Consistent JSON error format
+- **Database error handling**: Graceful handling of DB issues
+- **Validation errors**: Clear error messages for invalid requests
+
+#### 5. Enhanced Health Checks
+- **Database connectivity**: Verifies PostgreSQL connection
+- **Scheduler status**: Confirms background jobs are running
+- **File system access**: Checks logs and storage directories
+
 ### Security Checklist
 
 Before deploying to production:
@@ -93,28 +123,36 @@ Before deploying to production:
    - [ ] Use strong database passwords
    - [ ] Never commit `.env` file
    - [ ] Use secrets management (AWS Secrets Manager, HashiCorp Vault, etc.)
+   - [ ] Copy `.env.production.example` to `.env.production`
+   - [ ] Generate secure API keys with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 
-2. **CORS Configuration**
-   - [ ] Update CORS allowed origins in `backend/app/main.py`
-   - [ ] Remove `allow_origins=["*"]`
-   - [ ] Add specific domains only
+2. **API Authentication**
+   - [ ] Set `REQUIRE_API_KEY=true` in `.env.production`
+   - [ ] Generate and configure API keys in `API_KEYS`
+   - [ ] Distribute API keys securely to authorized clients
+   - [ ] Never include API keys in source code or client-side JavaScript
 
 3. **Database**
    - [ ] Use managed PostgreSQL (AWS RDS, Google Cloud SQL, etc.)
    - [ ] Enable SSL connections
-   - [ ] Regular backups
-   - [ ] Connection pooling
+   - [ ] Regular automated backups
+   - [ ] Connection pooling (built-in via SQLAlchemy)
 
-4. **API Security**
-   - [ ] Add API key authentication
-   - [ ] Implement rate limiting
-   - [ ] Use HTTPS only
-   - [ ] Add request validation
+4. **Logging**
+   - [ ] Enable JSON logging: `LOG_JSON=true`
+   - [ ] Set appropriate log level: `LOG_LEVEL=INFO` or `WARNING`
+   - [ ] Monitor log files: `/app/logs/dmarc-api.log` and `/app/logs/dmarc-api-error.log`
+   - [ ] Set up log aggregation (ELK, Splunk, CloudWatch, etc.)
 
 5. **Email Security**
    - [ ] Use OAuth2 instead of passwords where possible
    - [ ] Restrict email account permissions
    - [ ] Use dedicated email account for DMARC reports
+
+6. **HTTPS/TLS**
+   - [ ] Use HTTPS only in production
+   - [ ] Configure SSL certificates (Let's Encrypt recommended)
+   - [ ] Update nginx configuration for HTTPS
 
 ### Docker Compose Production
 
@@ -272,19 +310,49 @@ For simple production deployment with Docker Compose:
    - Monitor `/health` endpoint
    - Alert on failures
 
-### Scheduled Ingest
+### Automated Processing
 
-For automatic report processing, set up a cron job:
+The application includes built-in automatic processing:
+
+#### Background Scheduler (Built-in)
+- **Automatic**: Starts with the application
+- **Report processing**: Every 5 minutes
+- **Email ingestion**: Every 15 minutes (when email is configured)
+- **No cron required**: Managed by APScheduler
+
+#### Manual Triggers
+
+You can also manually trigger processing via API:
 
 ```bash
-# Add to crontab (runs every 6 hours)
-0 */6 * * * curl -X POST http://localhost/api/ingest/trigger
+# Manually trigger report processing
+curl -X POST http://localhost/api/process/trigger
+
+# Response:
+# {
+#   "message": "Processing complete: 5 reports processed successfully, 0 failed",
+#   "reports_processed": 5,
+#   "reports_failed": 0
+# }
 ```
 
-Or use a scheduled task in your cloud provider:
-- AWS: EventBridge + Lambda
-- Google Cloud: Cloud Scheduler
-- DigitalOcean: Managed Cron Jobs
+If API authentication is enabled:
+```bash
+curl -X POST -H "X-API-Key: your_api_key" https://yourdomain.com/api/process/trigger
+```
+
+#### Adjusting Schedule
+
+To change processing frequency, edit `backend/app/services/scheduler.py`:
+
+```python
+# Process reports every 10 minutes instead of 5
+self.scheduler.add_job(
+    func=self._process_reports_job,
+    trigger=IntervalTrigger(minutes=10),  # Changed from 5
+    ...
+)
+```
 
 ### Scaling Considerations
 
