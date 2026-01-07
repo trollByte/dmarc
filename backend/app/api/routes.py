@@ -24,7 +24,10 @@ from app.schemas.api_schemas import (
     TimelineListResponse,
     IngestTriggerResponse,
     ProcessTriggerResponse,
-    ConfigStatusResponse
+    ConfigStatusResponse,
+    CheckAlertsResponse,
+    AlertConfigResponse,
+    AlertDetail
 )
 
 router = APIRouter()
@@ -618,3 +621,115 @@ async def trigger_process(db: Session = Depends(get_db)):
             reports_processed=0,
             reports_failed=0
         )
+
+
+@router.post("/api/alerts/check", response_model=CheckAlertsResponse)
+async def check_alerts(
+    domain: Optional[str] = Query(None, description="Check alerts for specific domain"),
+    send_notifications: bool = Query(True, description="Send notifications if alerts found"),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually check alert conditions and optionally send notifications
+
+    This endpoint allows you to:
+    - Check current alert conditions without waiting for scheduler
+    - Test alert configuration
+    - Optionally send notifications immediately
+    """
+    from app.services.alerting import AlertService
+    from app.services.notifications import NotificationService
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    if not settings.enable_alerts:
+        return CheckAlertsResponse(
+            alerts_found=0,
+            alerts=[],
+            notifications_sent=0,
+            notification_channels={'error': 'Alerting is not enabled. Set ENABLE_ALERTS=true'}
+        )
+
+    try:
+        # Check alerts
+        alert_service = AlertService(db)
+        alerts = alert_service.check_all_alerts(domain=domain)
+
+        response_alerts = [
+            AlertDetail(
+                alert_type=alert.alert_type,
+                severity=alert.severity,
+                title=alert.title,
+                message=alert.message,
+                details=alert.details,
+                timestamp=alert.timestamp
+            )
+            for alert in alerts
+        ]
+
+        # Send notifications if requested
+        notifications_sent = 0
+        notification_channels = {}
+
+        if alerts and send_notifications:
+            notification_service = NotificationService()
+            stats = notification_service.send_alerts(alerts)
+            notifications_sent = stats['sent']
+            notification_channels = stats['channels']
+
+        return CheckAlertsResponse(
+            alerts_found=len(alerts),
+            alerts=response_alerts,
+            notifications_sent=notifications_sent,
+            notification_channels=notification_channels
+        )
+
+    except Exception as e:
+        logger.error(f"Error checking alerts: {str(e)}", exc_info=True)
+        return CheckAlertsResponse(
+            alerts_found=0,
+            alerts=[],
+            notifications_sent=0,
+            notification_channels={'error': str(e)}
+        )
+
+
+@router.get("/api/alerts/config", response_model=AlertConfigResponse)
+async def get_alert_config():
+    """
+    Get current alert configuration and status
+
+    Shows:
+    - Whether alerting is enabled
+    - Current thresholds
+    - Configured notification channels
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    # Check notification channels
+    email_configured = bool(
+        settings.smtp_host and
+        settings.smtp_from and
+        settings.alert_email_to
+    )
+
+    slack_configured = bool(settings.slack_webhook_url)
+    discord_configured = bool(settings.discord_webhook_url)
+    teams_configured = bool(settings.teams_webhook_url)
+    webhook_configured = bool(settings.webhook_url)
+
+    return AlertConfigResponse(
+        enabled=settings.enable_alerts,
+        failure_warning_threshold=settings.alert_failure_warning,
+        failure_critical_threshold=settings.alert_failure_critical,
+        volume_spike_threshold=settings.alert_volume_spike,
+        volume_drop_threshold=settings.alert_volume_drop,
+        email_configured=email_configured,
+        slack_configured=slack_configured,
+        discord_configured=discord_configured,
+        teams_configured=teams_configured,
+        webhook_configured=webhook_configured
+    )

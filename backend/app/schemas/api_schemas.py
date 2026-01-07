@@ -174,3 +174,36 @@ class ConfigStatusResponse(BaseModel):
     email_folder: Optional[str]
     scheduler_running: bool
     background_jobs: List[str]
+
+
+# Alerting
+class AlertDetail(BaseModel):
+    """Single alert details"""
+    alert_type: str
+    severity: str
+    title: str
+    message: str
+    details: dict
+    timestamp: datetime
+
+
+class CheckAlertsResponse(BaseModel):
+    """Response for alert check"""
+    alerts_found: int
+    alerts: List[AlertDetail]
+    notifications_sent: int
+    notification_channels: dict
+
+
+class AlertConfigResponse(BaseModel):
+    """Alert configuration status"""
+    enabled: bool
+    failure_warning_threshold: float
+    failure_critical_threshold: float
+    volume_spike_threshold: float
+    volume_drop_threshold: float
+    email_configured: bool
+    slack_configured: bool
+    discord_configured: bool
+    teams_configured: bool
+    webhook_configured: bool

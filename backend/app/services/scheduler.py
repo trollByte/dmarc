@@ -54,6 +54,19 @@ class ReportScheduler:
         else:
             logger.info("Email ingestion job not scheduled (email not configured)")
 
+        # Schedule alerting checks every hour (if alerts are enabled)
+        if self._is_alerting_enabled():
+            self.scheduler.add_job(
+                func=self._check_alerts_job,
+                trigger=IntervalTrigger(hours=1),
+                id='check_alerts',
+                name='Check DMARC alert conditions',
+                replace_existing=True
+            )
+            logger.info("Alert checking job scheduled (every hour)")
+        else:
+            logger.info("Alert checking job not scheduled (alerts not enabled)")
+
         self.scheduler.start()
         self._started = True
         logger.info("Report scheduler started")
@@ -75,6 +88,10 @@ class ReportScheduler:
             self.settings.email_user and
             self.settings.email_password
         )
+
+    def _is_alerting_enabled(self) -> bool:
+        """Check if alerting is enabled and configured"""
+        return self.settings.enable_alerts
 
     def _process_reports_job(self):
         """Background job to process pending reports"""
@@ -115,6 +132,38 @@ class ReportScheduler:
 
         except Exception as e:
             logger.error(f"Error in scheduled email ingestion: {str(e)}", exc_info=True)
+        finally:
+            db.close()
+
+    def _check_alerts_job(self):
+        """Background job to check alert conditions and send notifications"""
+        logger.info("Starting scheduled alert check")
+        db = SessionLocal()
+
+        try:
+            from app.services.alerting import AlertService
+            from app.services.notifications import NotificationService
+
+            # Check alerts
+            alert_service = AlertService(db)
+            alerts = alert_service.check_all_alerts()
+
+            if alerts:
+                logger.info(f"Found {len(alerts)} alert(s) to send")
+
+                # Send notifications
+                notification_service = NotificationService()
+                stats = notification_service.send_alerts(alerts)
+
+                logger.info(
+                    f"Alert notification complete: {stats['sent']} sent, {stats['failed']} failed",
+                    extra=stats
+                )
+            else:
+                logger.debug("No alerts triggered")
+
+        except Exception as e:
+            logger.error(f"Error in scheduled alert check: {str(e)}", exc_info=True)
         finally:
             db.close()
 
