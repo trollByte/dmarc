@@ -74,6 +74,17 @@ class ReportProcessor:
         # Commit all changes
         self.db.commit()
 
+        # Invalidate caches after successful processing
+        if processed_count > 0:
+            from app.services.cache import get_cache
+            cache = get_cache()
+            cache.invalidate_pattern("timeline:*")
+            cache.invalidate_pattern("summary:*")
+            cache.invalidate_pattern("sources:*")
+            cache.invalidate_pattern("domains:*")
+            cache.invalidate_pattern("alignment:*")
+            logger.info("Cache invalidated after processing reports")
+
         logger.info(
             f"Batch processing complete: {processed_count} processed, "
             f"{failed_count} failed"

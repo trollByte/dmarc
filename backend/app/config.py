@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     log_json: bool = False  # Enable JSON logging for production
     enable_request_logging: bool = True
 
+    # Redis Cache
+    redis_url: str = "redis://redis:6379/0"
+    cache_enabled: bool = True
+    cache_default_ttl: int = 300  # 5 minutes
+
     # Authentication
     require_api_key: bool = False  # Set to True in production
     api_keys: list[str] = []  # List of valid API keys (set via API_KEYS env var comma-separated)

@@ -91,15 +91,25 @@ class AlertService:
             if not reports:
                 return
 
-            # Calculate pass/fail counts
-            total_messages = 0
-            pass_count = 0
+            # Get report IDs
+            report_ids = [r.id for r in reports]
 
-            for report in reports:
-                for record in report.records:
-                    total_messages += record.count
-                    if record.dkim_result == 'pass' and record.spf_result == 'pass':
-                        pass_count += record.count
+            # Single aggregation query instead of N+1
+            from sqlalchemy import func, case, and_
+            stats = self.db.query(
+                func.sum(DmarcRecord.count).label('total'),
+                func.sum(
+                    case(
+                        (and_(DmarcRecord.dkim_result == 'pass',
+                              DmarcRecord.spf_result == 'pass'),
+                         DmarcRecord.count),
+                        else_=0
+                    )
+                ).label('passed')
+            ).filter(DmarcRecord.report_id.in_(report_ids)).one()
+
+            total_messages = stats.total or 0
+            pass_count = stats.passed or 0
 
             if total_messages == 0:
                 return
@@ -188,19 +198,20 @@ class AlertService:
             new_ips = recent_ips - historical_ips
 
             if new_ips:
-                # Get details about new IPs
-                ip_details = []
-                for ip in new_ips:
-                    count = self.db.query(func.sum(DmarcRecord.count)).join(
-                        DmarcReport
-                    ).filter(
-                        and_(
-                            DmarcRecord.source_ip == ip,
-                            DmarcReport.date_end >= recent_cutoff
-                        )
-                    ).scalar() or 0
+                # Get details about new IPs with single query
+                ip_counts = self.db.query(
+                    DmarcRecord.source_ip,
+                    func.sum(DmarcRecord.count).label('count')
+                ).join(
+                    DmarcReport
+                ).filter(
+                    and_(
+                        DmarcRecord.source_ip.in_(new_ips),
+                        DmarcReport.date_end >= recent_cutoff
+                    )
+                ).group_by(DmarcRecord.source_ip).all()
 
-                    ip_details.append({'ip': ip, 'message_count': count})
+                ip_details = [{'ip': ip, 'message_count': count} for ip, count in ip_counts]
 
                 total_new_messages = sum(d['message_count'] for d in ip_details)
 

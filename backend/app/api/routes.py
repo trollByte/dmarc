@@ -530,75 +530,84 @@ async def rollup_timeline(
     db: Session = Depends(get_db)
 ):
     """
-    Get timeline statistics grouped by date
+    Get timeline statistics grouped by date (optimized with caching)
     """
     from datetime import timedelta
-    from sqlalchemy import cast, Date
+    from sqlalchemy import cast, Date, func, case, and_
+    from app.services.cache import get_cache, cache_key
 
-    # Build query for reports
-    reports_query = db.query(DmarcReport)
+    # Try cache first
+    cache = get_cache()
+    cache_k = cache_key("timeline", domain=domain, days=days, start=start, end=end)
+    cached_result = cache.get(cache_k)
+    if cached_result:
+        return TimelineListResponse(**cached_result)
 
+    # Build optimized query with JOIN and aggregation
+    query = db.query(
+        cast(DmarcReport.date_end, Date).label('date'),
+        func.count(DmarcReport.id).label('report_count'),
+        func.sum(DmarcRecord.count).label('total_messages'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result == 'pass',
+                      DmarcRecord.spf_result == 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('pass_count')
+    ).join(
+        DmarcRecord, DmarcReport.id == DmarcRecord.report_id
+    )
+
+    # Apply filters
     if domain:
-        reports_query = reports_query.filter(DmarcReport.domain == domain)
-    if start:
-        reports_query = reports_query.filter(DmarcReport.date_begin >= start)
-    if end:
-        reports_query = reports_query.filter(DmarcReport.date_end <= end)
+        query = query.filter(DmarcReport.domain == domain)
 
-    # If no date range specified, use last N days
-    if not start and not end:
+    if start and end:
+        query = query.filter(
+            DmarcReport.date_begin >= start,
+            DmarcReport.date_end <= end
+        )
+    elif not start and not end:
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
-        reports_query = reports_query.filter(
+        query = query.filter(
             DmarcReport.date_end >= start_date,
             DmarcReport.date_end <= end_date
         )
 
-    # Get all matching reports with their records
-    reports = reports_query.all()
+    # Group by date and order
+    query = query.group_by(cast(DmarcReport.date_end, Date))
+    query = query.order_by(cast(DmarcReport.date_end, Date))
 
-    # Group by date
-    timeline_data = {}
+    # Execute single query
+    results = query.all()
 
-    for report in reports:
-        # Use date_end as the key date
-        date_key = report.date_end.strftime('%Y-%m-%d')
-
-        if date_key not in timeline_data:
-            timeline_data[date_key] = {
-                'total_messages': 0,
-                'pass_count': 0,
-                'fail_count': 0,
-                'report_count': 0
-            }
-
-        timeline_data[date_key]['report_count'] += 1
-
-        # Aggregate record counts
-        for record in report.records:
-            timeline_data[date_key]['total_messages'] += record.count
-
-            # Check if both DKIM and SPF passed
-            if record.dkim_result == 'pass' and record.spf_result == 'pass':
-                timeline_data[date_key]['pass_count'] += record.count
-            else:
-                timeline_data[date_key]['fail_count'] += record.count
-
-    # Convert to list and sort by date
+    # Format response
     timeline = []
-    for date, stats in sorted(timeline_data.items()):
+    for row in results:
+        total = row.total_messages or 0
+        passed = row.pass_count or 0
+        failed = total - passed
+
         timeline.append(TimelineStats(
-            date=date,
-            total_messages=stats['total_messages'],
-            pass_count=stats['pass_count'],
-            fail_count=stats['fail_count'],
-            report_count=stats['report_count']
+            date=row.date.strftime('%Y-%m-%d'),
+            total_messages=total,
+            pass_count=passed,
+            fail_count=failed,
+            report_count=row.report_count
         ))
 
-    return TimelineListResponse(
-        timeline=timeline,
-        total=len(timeline)
-    )
+    response_data = {
+        "timeline": [t.dict() for t in timeline],
+        "total": len(timeline)
+    }
+
+    # Cache for 5 minutes
+    cache.set(cache_k, response_data, ttl=300)
+
+    return TimelineListResponse(**response_data)
 
 
 @router.post("/api/ingest/trigger", response_model=IngestTriggerResponse)
