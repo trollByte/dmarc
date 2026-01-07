@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case
 from typing import Optional
 from datetime import datetime
+import logging
 
 from app.database import get_db
 from app.models import DmarcReport, DmarcRecord
@@ -22,10 +23,12 @@ from app.schemas.api_schemas import (
     TimelineStats,
     TimelineListResponse,
     IngestTriggerResponse,
-    ProcessTriggerResponse
+    ProcessTriggerResponse,
+    ConfigStatusResponse
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/api/healthz", response_model=HealthCheckResponse)
@@ -67,6 +70,41 @@ async def healthz():
         status="healthy" if is_healthy else "unhealthy",
         service="DMARC Report Processor API",
         database="connected" if db_connected else "disconnected"
+    )
+
+
+@router.get("/api/config/status", response_model=ConfigStatusResponse)
+async def config_status():
+    """
+    Get configuration status
+
+    Returns information about email configuration and background jobs.
+    """
+    from app.config import get_settings
+    from app.services.scheduler import get_scheduler
+
+    settings = get_settings()
+    scheduler = get_scheduler()
+
+    # Check if email is configured
+    email_configured = bool(
+        settings.email_host and
+        settings.email_user and
+        settings.email_password
+    )
+
+    # Get scheduler status
+    scheduler_running = scheduler._started if scheduler else False
+    background_jobs = []
+    if scheduler and scheduler_running:
+        background_jobs = [job.id for job in scheduler.scheduler.get_jobs()]
+
+    return ConfigStatusResponse(
+        email_configured=email_configured,
+        email_host=settings.email_host if email_configured else None,
+        email_folder=settings.email_folder if email_configured else None,
+        scheduler_running=scheduler_running,
+        background_jobs=background_jobs
     )
 
 
@@ -521,19 +559,38 @@ async def trigger_ingest(db: Session = Depends(get_db)):
     """
     Manually trigger email ingestion
 
-    Note: This requires email ingestion service to be configured.
-    For now, use backend/scripts/load_sample_data.py to load sample data.
+    Checks configured email inbox for DMARC reports and ingests them.
+    Requires email settings to be configured in environment variables.
     """
-    # TODO: Implement email ingestion service
-    # from app.services.ingestion import EmailIngestionService
-    # service = EmailIngestionService(db, settings)
-    # reports_ingested, emails_checked = service.check_and_ingest()
+    from app.services.ingestion import IngestionService
+    from app.config import get_settings
 
-    return IngestTriggerResponse(
-        message="Email ingestion not yet implemented. Use backend/scripts/load_sample_data.py to load samples.",
-        reports_ingested=0,
-        emails_checked=0
-    )
+    settings = get_settings()
+
+    # Check if email is configured
+    if not all([settings.email_host, settings.email_user, settings.email_password]):
+        return IngestTriggerResponse(
+            message="Email not configured. Set EMAIL_HOST, EMAIL_USER, and EMAIL_PASSWORD in environment.",
+            reports_ingested=0,
+            emails_checked=0
+        )
+
+    try:
+        service = IngestionService(db)
+        stats = service.ingest_from_inbox(limit=50)
+
+        return IngestTriggerResponse(
+            message=f"Ingestion complete: {stats['attachments_ingested']} new reports from {stats['emails_checked']} emails ({stats['duplicates_skipped']} duplicates skipped)",
+            reports_ingested=stats['attachments_ingested'],
+            emails_checked=stats['emails_checked']
+        )
+    except Exception as e:
+        logger.error(f"Error during manual ingestion: {str(e)}", exc_info=True)
+        return IngestTriggerResponse(
+            message=f"Error during ingestion: {str(e)}",
+            reports_ingested=0,
+            emails_checked=0
+        )
 
 
 @router.post("/api/process/trigger", response_model=ProcessTriggerResponse)

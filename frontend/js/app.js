@@ -243,9 +243,38 @@ async function viewReport(id) {
 async function triggerIngest() {
     const btn = document.getElementById('ingestBtn');
     btn.disabled = true;
+    const originalText = btn.textContent;
     btn.textContent = '⏳ Processing...';
 
     try {
+        // Check if email is configured
+        const configResponse = await fetch(`${API_BASE}/config/status`);
+        const config = await configResponse.json();
+
+        let endpoint = '/process/trigger';
+        let action = 'Processing';
+
+        // If email is configured, try ingesting first, then processing
+        if (config.email_configured) {
+            // Try to ingest new reports from email
+            btn.textContent = '⏳ Checking email...';
+            const ingestResponse = await fetch(`${API_BASE}/ingest/trigger`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (ingestResponse.ok) {
+                const ingestData = await ingestResponse.json();
+                if (ingestData.reports_ingested > 0) {
+                    showNotification(`Ingested ${ingestData.reports_ingested} new reports from email`, 'success');
+                }
+            }
+        }
+
+        // Process pending reports
+        btn.textContent = '⏳ Processing reports...';
         const response = await fetch(`${API_BASE}/process/trigger`, {
             method: 'POST',
             headers: {
@@ -271,7 +300,7 @@ async function triggerIngest() {
         showNotification('Error triggering process', 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '🔄 Process Reports';
+        btn.textContent = originalText;
     }
 }
 

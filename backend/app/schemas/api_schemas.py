@@ -164,3 +164,13 @@ class HealthCheckResponse(BaseModel):
     status: str
     service: str
     database: str
+
+
+# Configuration status
+class ConfigStatusResponse(BaseModel):
+    """Configuration status response"""
+    email_configured: bool
+    email_host: Optional[str]
+    email_folder: Optional[str]
+    scheduler_running: bool
+    background_jobs: List[str]

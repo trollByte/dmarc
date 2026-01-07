@@ -41,14 +41,18 @@ class ReportScheduler:
             replace_existing=True
         )
 
-        # TODO: Add email ingestion job when email service is implemented
-        # self.scheduler.add_job(
-        #     func=self._ingest_emails_job,
-        #     trigger=IntervalTrigger(minutes=15),
-        #     id='ingest_emails',
-        #     name='Check email for new DMARC reports',
-        #     replace_existing=True
-        # )
+        # Schedule email ingestion every 15 minutes (if email is configured)
+        if self._is_email_configured():
+            self.scheduler.add_job(
+                func=self._ingest_emails_job,
+                trigger=IntervalTrigger(minutes=15),
+                id='ingest_emails',
+                name='Check email for new DMARC reports',
+                replace_existing=True
+            )
+            logger.info("Email ingestion job scheduled (every 15 minutes)")
+        else:
+            logger.info("Email ingestion job not scheduled (email not configured)")
 
         self.scheduler.start()
         self._started = True
@@ -63,6 +67,14 @@ class ReportScheduler:
         self.scheduler.shutdown()
         self._started = False
         logger.info("Report scheduler stopped")
+
+    def _is_email_configured(self) -> bool:
+        """Check if email settings are configured"""
+        return bool(
+            self.settings.email_host and
+            self.settings.email_user and
+            self.settings.email_password
+        )
 
     def _process_reports_job(self):
         """Background job to process pending reports"""
@@ -91,14 +103,15 @@ class ReportScheduler:
         db = SessionLocal()
 
         try:
-            # TODO: Implement email ingestion service
-            # from app.services.ingestion import EmailIngestionService
-            # service = EmailIngestionService(db, self.settings)
-            # reports_ingested, emails_checked = service.check_and_ingest()
-            # logger.info(
-            #     f"Email ingestion complete: {reports_ingested} reports from {emails_checked} emails"
-            # )
-            pass
+            from app.services.ingestion import IngestionService
+
+            service = IngestionService(db)
+            stats = service.ingest_from_inbox(limit=50)
+
+            logger.info(
+                f"Email ingestion complete: {stats['attachments_ingested']} new reports from {stats['emails_checked']} emails",
+                extra=stats
+            )
 
         except Exception as e:
             logger.error(f"Error in scheduled email ingestion: {str(e)}", exc_info=True)
