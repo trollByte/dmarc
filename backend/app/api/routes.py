@@ -1,10 +1,10 @@
 """
 API routes for DMARC reporting and rollups
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 import logging
 
@@ -27,7 +27,9 @@ from app.schemas.api_schemas import (
     ConfigStatusResponse,
     CheckAlertsResponse,
     AlertConfigResponse,
-    AlertDetail
+    AlertDetail,
+    UploadReportsResponse,
+    UploadedFileDetail
 )
 
 router = APIRouter()
@@ -621,6 +623,160 @@ async def trigger_process(db: Session = Depends(get_db)):
             reports_processed=0,
             reports_failed=0
         )
+
+
+@router.post("/api/upload", response_model=UploadReportsResponse)
+async def upload_reports(
+    files: List[UploadFile] = File(..., description="DMARC report files (.xml, .gz, .zip)"),
+    auto_process: bool = Query(True, description="Automatically process uploaded files"),
+    db: Session = Depends(get_db)
+):
+    """
+    Bulk upload DMARC report files for analysis
+
+    Supports:
+    - Multiple file upload (multipart/form-data)
+    - Automatic deduplication via SHA256 hashing
+    - Optional auto-processing after upload
+    - File type validation (.xml, .gz, .zip only)
+    - File size limits (50MB per file)
+
+    Returns detailed upload statistics and per-file status
+    """
+    from app.services.ingestion import IngestionService
+    from app.services.processing import ReportProcessor
+    from app.config import get_settings
+
+    settings = get_settings()
+    ingestion_service = IngestionService(db, settings.raw_reports_path)
+
+    # Constants
+    MAX_FILE_SIZE = 52_428_800  # 50MB
+    ALLOWED_EXTENSIONS = ['.xml', '.gz', '.zip']
+
+    # Track results
+    uploaded_files: List[UploadedFileDetail] = []
+    total_files = len(files)
+    uploaded_count = 0
+    duplicate_count = 0
+    error_count = 0
+    invalid_count = 0
+
+    # Process each file
+    for upload_file in files:
+        filename = upload_file.filename
+        file_size = 0
+
+        try:
+            # Read file content
+            content = await upload_file.read()
+            file_size = len(content)
+
+            # Validate file extension
+            ext = filename[filename.rfind('.'):].lower() if '.' in filename else ''
+            if ext not in ALLOWED_EXTENSIONS:
+                uploaded_files.append(UploadedFileDetail(
+                    filename=filename,
+                    status="invalid",
+                    file_size=file_size,
+                    error_message=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+                ))
+                invalid_count += 1
+                continue
+
+            # Validate file size
+            if file_size > MAX_FILE_SIZE:
+                uploaded_files.append(UploadedFileDetail(
+                    filename=filename,
+                    status="invalid",
+                    file_size=file_size,
+                    error_message=f"File too large. Maximum size: {MAX_FILE_SIZE // 1_048_576}MB"
+                ))
+                invalid_count += 1
+                continue
+
+            # Generate synthetic metadata for upload
+            timestamp = datetime.utcnow()
+            content_hash = ingestion_service.storage.compute_hash(content)
+            message_id = f"upload-{timestamp.strftime('%Y%m%d%H%M%S')}-{content_hash[:8]}"
+
+            # Process through ingestion service
+            success, ingested_record = ingestion_service.process_attachment(
+                filename=filename,
+                content=content,
+                message_id=message_id,
+                received_at=timestamp
+            )
+
+            if success and ingested_record:
+                uploaded_files.append(UploadedFileDetail(
+                    filename=filename,
+                    status="uploaded",
+                    file_size=file_size,
+                    content_hash=content_hash,
+                    ingestion_record_id=ingested_record.id
+                ))
+                uploaded_count += 1
+            else:
+                # Duplicate file
+                uploaded_files.append(UploadedFileDetail(
+                    filename=filename,
+                    status="duplicate",
+                    file_size=file_size,
+                    content_hash=content_hash,
+                    error_message="File already exists in system"
+                ))
+                duplicate_count += 1
+
+        except Exception as e:
+            logger.error(f"Error processing upload file {filename}: {str(e)}")
+            uploaded_files.append(UploadedFileDetail(
+                filename=filename,
+                status="error",
+                file_size=file_size,
+                error_message=str(e)
+            ))
+            error_count += 1
+
+    # Auto-process if requested
+    reports_processed = None
+    reports_failed = None
+
+    if auto_process and uploaded_count > 0:
+        try:
+            processor = ReportProcessor(db, settings.raw_reports_path)
+            reports_processed, reports_failed = processor.process_pending_reports(limit=1000)
+            logger.info(f"Auto-processed {reports_processed} reports ({reports_failed} failed)")
+        except Exception as e:
+            logger.error(f"Error during auto-processing: {str(e)}")
+            reports_processed = 0
+            reports_failed = 0
+
+    # Build response message
+    message_parts = []
+    if uploaded_count > 0:
+        message_parts.append(f"{uploaded_count} uploaded")
+    if duplicate_count > 0:
+        message_parts.append(f"{duplicate_count} duplicates")
+    if error_count > 0:
+        message_parts.append(f"{error_count} errors")
+    if invalid_count > 0:
+        message_parts.append(f"{invalid_count} invalid")
+
+    message = f"Upload complete: {', '.join(message_parts)}" if message_parts else "No files uploaded"
+
+    return UploadReportsResponse(
+        message=message,
+        total_files=total_files,
+        uploaded=uploaded_count,
+        duplicates=duplicate_count,
+        errors=error_count,
+        invalid_files=invalid_count,
+        files=uploaded_files,
+        auto_processed=auto_process and uploaded_count > 0,
+        reports_processed=reports_processed,
+        reports_failed=reports_failed
+    )
 
 
 @router.post("/api/alerts/check", response_model=CheckAlertsResponse)

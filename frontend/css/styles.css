@@ -277,6 +277,10 @@ tr:hover {
     animation: modalSlideIn 0.3s ease-in-out;
 }
 
+.modal-large {
+    max-width: 900px;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -347,6 +351,222 @@ tr:hover {
     padding: 20px;
     text-align: center;
     font-weight: bold;
+}
+
+/* Upload Modal Styles */
+.drop-zone {
+    border: 3px dashed #ccc;
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    background: #fafafa;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    margin-bottom: 20px;
+}
+
+.drop-zone.drag-over {
+    border-color: #3498db;
+    background: #e3f2fd;
+}
+
+.drop-zone-content .upload-icon {
+    font-size: 64px;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.drop-zone h3 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+
+.drop-zone p {
+    color: #666;
+    margin: 10px 0;
+}
+
+.file-types {
+    font-size: 0.9em;
+    color: #999;
+    margin-top: 15px;
+}
+
+/* File List */
+.file-list {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+
+.file-list h3 {
+    margin: 0 0 15px 0;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.file-item.invalid {
+    background: #ffebee;
+    border-color: #ef5350;
+}
+
+.file-name {
+    flex: 1;
+    font-weight: 500;
+    word-break: break-word;
+}
+
+.file-size {
+    color: #666;
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.file-error {
+    color: #d32f2f;
+    font-size: 0.85em;
+}
+
+.remove-file {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.remove-file:hover {
+    color: #d32f2f;
+}
+
+/* Upload Options */
+.upload-options {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.upload-options label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+/* Progress Bar */
+.upload-progress {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    height: 24px;
+    background: #e0e0e0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #3498db, #2980b9);
+    transition: width 0.3s ease;
+    animation: progress-shimmer 1.5s infinite;
+}
+
+@keyframes progress-shimmer {
+    0% { opacity: 0.8; }
+    50% { opacity: 1; }
+    100% { opacity: 0.8; }
+}
+
+#progressText {
+    text-align: center;
+    margin-top: 10px;
+    color: #666;
+}
+
+/* Upload Results */
+.upload-results {
+    margin-top: 20px;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+
+.upload-results h3 {
+    margin: 0 0 20px 0;
+    color: #2c3e50;
+}
+
+.results-summary {
+    display: flex;
+    gap: 30px;
+    margin: 20px 0;
+    flex-wrap: wrap;
+}
+
+.result-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.result-label {
+    font-size: 0.9em;
+    color: #666;
+}
+
+.result-value {
+    font-size: 2em;
+    font-weight: bold;
+    color: #333;
+}
+
+.result-details {
+    margin-top: 20px;
+}
+
+.error-list {
+    background: #ffebee;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.error-list h4 {
+    margin: 0 0 10px 0;
+    color: #d32f2f;
+}
+
+.error-item {
+    padding: 5px 0;
+    color: #d32f2f;
+    font-size: 0.9em;
+}
+
+/* Modal Actions */
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
 }
 
 @keyframes modalSlideIn {

@@ -207,3 +207,28 @@ class AlertConfigResponse(BaseModel):
     discord_configured: bool
     teams_configured: bool
     webhook_configured: bool
+
+
+# File upload
+class UploadedFileDetail(BaseModel):
+    """Details about an uploaded file"""
+    filename: str
+    status: str  # "uploaded", "duplicate", "error", "invalid"
+    file_size: int
+    content_hash: Optional[str] = None
+    error_message: Optional[str] = None
+    ingestion_record_id: Optional[int] = None
+
+
+class UploadReportsResponse(BaseModel):
+    """Response for bulk upload endpoint"""
+    message: str
+    total_files: int
+    uploaded: int
+    duplicates: int
+    errors: int
+    invalid_files: int
+    files: List[UploadedFileDetail]
+    auto_processed: bool
+    reports_processed: Optional[int] = None
+    reports_failed: Optional[int] = None

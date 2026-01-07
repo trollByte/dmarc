@@ -12,11 +12,15 @@ let currentFilters = {
     endDate: null
 };
 
+// Upload modal state
+let selectedFiles = [];
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', async () => {
     await loadDashboard();
 
     // Set up button event listeners
+    document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
     document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
     document.getElementById('exportBtn').addEventListener('click', exportToCSV);
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
@@ -675,6 +679,213 @@ async function triggerIngest() {
         btn.disabled = false;
         btn.textContent = originalText;
     }
+}
+
+// Upload modal functions
+function openUploadModal() {
+    const modal = document.getElementById('uploadModal');
+    modal.style.display = 'block';
+    resetUploadModal();
+    setupUploadListeners();
+}
+
+function resetUploadModal() {
+    selectedFiles = [];
+    document.getElementById('fileList').style.display = 'none';
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.getElementById('uploadResults').style.display = 'none';
+    document.getElementById('uploadFilesBtn').style.display = 'none';
+    document.getElementById('fileListItems').innerHTML = '';
+    document.getElementById('fileCount').textContent = '0';
+    document.getElementById('autoProcessCheckbox').checked = true;
+}
+
+function setupUploadListeners() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const selectFilesBtn = document.getElementById('selectFilesBtn');
+    const uploadModalClose = document.getElementById('uploadModalClose');
+    const closeUploadBtn = document.getElementById('closeUploadBtn');
+
+    // File selection
+    selectFilesBtn.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => handleFileSelect(Array.from(e.target.files));
+
+    // Drag & drop
+    dropZone.ondragover = (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+    };
+
+    dropZone.ondragleave = () => {
+        dropZone.classList.remove('drag-over');
+    };
+
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        handleFileSelect(Array.from(e.dataTransfer.files));
+    };
+
+    // Upload button
+    document.getElementById('uploadFilesBtn').onclick = uploadFiles;
+
+    // Close buttons
+    uploadModalClose.onclick = () => {
+        document.getElementById('uploadModal').style.display = 'none';
+    };
+    closeUploadBtn.onclick = () => {
+        document.getElementById('uploadModal').style.display = 'none';
+    };
+
+    // Click outside to close
+    window.onclick = (e) => {
+        const modal = document.getElementById('uploadModal');
+        if (e.target === modal) {
+            modal.style.display = 'none';
+        }
+    };
+}
+
+function handleFileSelect(files) {
+    const validExtensions = ['.xml', '.gz', '.zip'];
+    const maxSize = 50 * 1024 * 1024; // 50MB
+
+    selectedFiles = [];
+    const fileListItems = document.getElementById('fileListItems');
+    fileListItems.innerHTML = '';
+
+    files.forEach(file => {
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        const isValid = validExtensions.includes(ext) && file.size <= maxSize;
+
+        const fileInfo = {
+            file: file,
+            valid: isValid,
+            reason: !validExtensions.includes(ext)
+                ? 'Invalid file type'
+                : (file.size > maxSize ? 'File too large (max 50MB)' : null)
+        };
+
+        selectedFiles.push(fileInfo);
+
+        // Add to UI
+        const item = document.createElement('div');
+        item.className = `file-item ${isValid ? '' : 'invalid'}`;
+        item.innerHTML = `
+            <span class="file-name">${escapeHtml(file.name)}</span>
+            <span class="file-size">${formatFileSize(file.size)}</span>
+            ${!isValid ? `<span class="file-error">${fileInfo.reason}</span>` : ''}
+            <button class="remove-file" data-index="${selectedFiles.length - 1}">✕</button>
+        `;
+        fileListItems.appendChild(item);
+    });
+
+    // Show file list and upload button
+    const validCount = selectedFiles.filter(f => f.valid).length;
+    document.getElementById('fileCount').textContent = validCount;
+    document.getElementById('fileList').style.display = 'block';
+    document.getElementById('uploadFilesBtn').style.display = validCount > 0 ? 'block' : 'none';
+
+    // Remove file handlers
+    fileListItems.querySelectorAll('.remove-file').forEach(btn => {
+        btn.onclick = (e) => {
+            const index = parseInt(e.target.dataset.index);
+            selectedFiles.splice(index, 1);
+            const remainingFiles = selectedFiles.map(f => f.file);
+            handleFileSelect(remainingFiles);
+        };
+    });
+}
+
+async function uploadFiles() {
+    const validFiles = selectedFiles.filter(f => f.valid);
+
+    if (validFiles.length === 0) {
+        showNotification('No valid files to upload', 'error');
+        return;
+    }
+
+    // Show progress
+    document.getElementById('uploadProgress').style.display = 'block';
+    document.getElementById('uploadFilesBtn').disabled = true;
+    document.getElementById('progressText').textContent = `Uploading ${validFiles.length} files...`;
+    document.getElementById('progressBarFill').style.width = '100%';
+
+    try {
+        // Create FormData
+        const formData = new FormData();
+        validFiles.forEach(({file}) => {
+            formData.append('files', file);
+        });
+
+        const autoProcess = document.getElementById('autoProcessCheckbox').checked;
+
+        // Upload
+        const response = await fetch(`${API_BASE}/upload?auto_process=${autoProcess}`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Show results
+        displayUploadResults(data);
+
+        // Reload dashboard if successful uploads
+        if (data.uploaded > 0 && autoProcess) {
+            setTimeout(() => loadDashboard(), 1000);
+        }
+
+    } catch (error) {
+        console.error('Upload error:', error);
+        showNotification('Upload failed: ' + error.message, 'error');
+    } finally {
+        document.getElementById('uploadProgress').style.display = 'none';
+        document.getElementById('uploadFilesBtn').disabled = false;
+    }
+}
+
+function displayUploadResults(data) {
+    document.getElementById('uploadResults').style.display = 'block';
+    document.getElementById('uploadFilesBtn').style.display = 'none';
+    document.getElementById('resultUploaded').textContent = data.uploaded;
+    document.getElementById('resultDuplicates').textContent = data.duplicates;
+    document.getElementById('resultErrors').textContent = data.errors + data.invalid_files;
+
+    // Show detailed results
+    const details = document.getElementById('resultDetails');
+    details.innerHTML = '';
+
+    const errorFiles = data.files.filter(f => f.status === 'error' || f.status === 'invalid');
+    if (errorFiles.length > 0) {
+        const errorList = document.createElement('div');
+        errorList.className = 'error-list';
+        errorList.innerHTML = '<h4>Errors:</h4>';
+
+        errorFiles.forEach(file => {
+            const item = document.createElement('div');
+            item.className = 'error-item';
+            item.textContent = `${file.filename}: ${file.error_message}`;
+            errorList.appendChild(item);
+        });
+
+        details.appendChild(errorList);
+    }
+
+    // Show success message
+    const type = (data.errors + data.invalid_files) > 0 ? 'error' : 'success';
+    showNotification(data.message, type);
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 // Show notification

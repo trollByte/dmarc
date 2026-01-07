@@ -12,6 +12,7 @@
         <header>
             <h1>📊 DMARC Report Dashboard</h1>
             <div class="header-actions">
+                <button id="uploadBtn" class="btn-primary">📤 Upload Reports</button>
                 <button id="ingestBtn" class="btn-primary">🔄 Process Reports</button>
                 <button id="exportBtn" class="btn-secondary">📥 Export CSV</button>
                 <button id="refreshBtn" class="btn-secondary">↻ Refresh</button>
@@ -119,6 +120,77 @@
             </div>
             <div class="modal-body" id="reportModalBody">
                 <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="uploadModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Upload DMARC Reports</h2>
+                <span class="close" id="uploadModalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Drag & Drop Zone -->
+                <div id="dropZone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <div class="upload-icon">📤</div>
+                        <h3>Drag & Drop Files Here</h3>
+                        <p>or</p>
+                        <button id="selectFilesBtn" class="btn-primary">Select Files</button>
+                        <input type="file" id="fileInput" multiple accept=".xml,.gz,.zip" style="display: none;">
+                        <p class="file-types">Supported: .xml, .gz, .zip (max 50MB each)</p>
+                    </div>
+                </div>
+
+                <!-- File List -->
+                <div id="fileList" class="file-list" style="display: none;">
+                    <h3>Selected Files (<span id="fileCount">0</span>)</h3>
+                    <div id="fileListItems"></div>
+                </div>
+
+                <!-- Upload Options -->
+                <div class="upload-options">
+                    <label>
+                        <input type="checkbox" id="autoProcessCheckbox" checked>
+                        Automatically process after upload
+                    </label>
+                </div>
+
+                <!-- Upload Progress -->
+                <div id="uploadProgress" class="upload-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div id="progressBarFill" class="progress-bar-fill"></div>
+                    </div>
+                    <p id="progressText">Uploading...</p>
+                </div>
+
+                <!-- Upload Results -->
+                <div id="uploadResults" class="upload-results" style="display: none;">
+                    <h3>Upload Complete</h3>
+                    <div class="results-summary">
+                        <div class="result-stat">
+                            <span class="result-label">Uploaded:</span>
+                            <span id="resultUploaded" class="result-value">0</span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="result-label">Duplicates:</span>
+                            <span id="resultDuplicates" class="result-value">0</span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="result-label">Errors:</span>
+                            <span id="resultErrors" class="result-value">0</span>
+                        </div>
+                    </div>
+                    <div id="resultDetails" class="result-details"></div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="modal-actions">
+                    <button id="uploadFilesBtn" class="btn-primary" style="display: none;">Upload Files</button>
+                    <button id="closeUploadBtn" class="btn-secondary">Close</button>
+                </div>
             </div>
         </div>
     </div>
