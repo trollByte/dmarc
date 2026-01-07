@@ -232,3 +232,40 @@ class UploadReportsResponse(BaseModel):
     auto_processed: bool
     reports_processed: Optional[int] = None
     reports_failed: Optional[int] = None
+
+
+# Record-level details
+class RecordDetailResponse(BaseModel):
+    """Detailed information about a single DMARC record"""
+    id: int
+    source_ip: str
+    count: int
+    disposition: str
+
+    # Authentication results
+    dkim: Optional[str] = None
+    dkim_domain: Optional[str] = None
+    dkim_result: Optional[str] = None
+    dkim_selector: Optional[str] = None
+
+    spf: Optional[str] = None
+    spf_domain: Optional[str] = None
+    spf_result: Optional[str] = None
+    spf_scope: Optional[str] = None
+
+    # Email identifiers
+    header_from: Optional[str] = None
+    envelope_from: Optional[str] = None
+    envelope_to: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ReportRecordsResponse(BaseModel):
+    """Response for /api/reports/{id}/records"""
+    report_id: int
+    total: int
+    page: int
+    page_size: int
+    records: List[RecordDetailResponse]

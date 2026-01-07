@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import logging
@@ -10,6 +11,8 @@ from app.api.routes import router as api_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
 from app.error_handlers import register_error_handlers
+from app.middleware.rate_limit import limiter, rate_limit_handler, SlowAPIMiddleware
+from slowapi.errors import RateLimitExceeded
 
 settings = get_settings()
 
@@ -43,8 +46,25 @@ app = FastAPI(
     title=settings.app_name,
     description="DMARC Aggregate Report Processor API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs" if settings.debug else None,  # Disable docs in production
+    redoc_url="/redoc" if settings.debug else None,
 )
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if settings.debug else [],  # Configure allowed origins in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+)
+
+# Add rate limiting middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Register error handlers
 register_error_handlers(app)

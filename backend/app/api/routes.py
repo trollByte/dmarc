@@ -1,7 +1,7 @@
 """
 API routes for DMARC reporting and rollups
 """
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Security, Request, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case
 from typing import Optional, List
@@ -10,6 +10,8 @@ import logging
 
 from app.database import get_db
 from app.models import DmarcReport, DmarcRecord
+from app.middleware.auth import get_api_key
+from app.middleware.rate_limit import limiter
 from app.schemas.api_schemas import (
     DomainsListResponse,
     DomainInfo,
@@ -29,7 +31,9 @@ from app.schemas.api_schemas import (
     AlertConfigResponse,
     AlertDetail,
     UploadReportsResponse,
-    UploadedFileDetail
+    UploadedFileDetail,
+    RecordDetailResponse,
+    ReportRecordsResponse
 )
 
 router = APIRouter()
@@ -198,6 +202,44 @@ async def list_reports(
         total=total,
         page=page,
         page_size=page_size
+    )
+
+
+@router.get("/api/reports/{report_id}/records", response_model=ReportRecordsResponse)
+async def get_report_records(
+    report_id: int,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=200, description="Records per page"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all records for a specific report with pagination
+    """
+    # Verify report exists
+    report = db.query(DmarcReport).filter(DmarcReport.id == report_id).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Query records with pagination
+    query = db.query(DmarcRecord).filter(DmarcRecord.report_id == report_id)
+    total = query.count()
+
+    # Order by count DESC (most impactful first), then source_ip
+    offset = (page - 1) * page_size
+    records = query.order_by(
+        DmarcRecord.count.desc(),
+        DmarcRecord.source_ip
+    ).offset(offset).limit(page_size).all()
+
+    # Convert to response models
+    records_data = [RecordDetailResponse.from_orm(record) for record in records]
+
+    return ReportRecordsResponse(
+        report_id=report_id,
+        total=total,
+        page=page,
+        page_size=page_size,
+        records=records_data
     )
 
 
@@ -560,9 +602,17 @@ async def rollup_timeline(
 
 
 @router.post("/api/ingest/trigger", response_model=IngestTriggerResponse)
-async def trigger_ingest(db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def trigger_ingest(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key)
+):
     """
     Manually trigger email ingestion
+
+    Requires API key authentication (X-API-Key header)
+    Rate limit: 10 requests per minute
 
     Checks configured email inbox for DMARC reports and ingests them.
     Requires email settings to be configured in environment variables.
@@ -599,9 +649,17 @@ async def trigger_ingest(db: Session = Depends(get_db)):
 
 
 @router.post("/api/process/trigger", response_model=ProcessTriggerResponse)
-async def trigger_process(db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def trigger_process(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key)
+):
     """
     Manually trigger processing of pending DMARC reports
+
+    Requires API key authentication (X-API-Key header)
+    Rate limit: 10 requests per minute
     """
     from app.services.processing import ReportProcessor
     from app.config import get_settings
@@ -626,13 +684,19 @@ async def trigger_process(db: Session = Depends(get_db)):
 
 
 @router.post("/api/upload", response_model=UploadReportsResponse)
+@limiter.limit("20/hour")
 async def upload_reports(
+    request: Request,
     files: List[UploadFile] = File(..., description="DMARC report files (.xml, .gz, .zip)"),
     auto_process: bool = Query(True, description="Automatically process uploaded files"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key)
 ):
     """
     Bulk upload DMARC report files for analysis
+
+    Requires API key authentication (X-API-Key header)
+    Rate limit: 20 uploads per hour
 
     Supports:
     - Multiple file upload (multipart/form-data)

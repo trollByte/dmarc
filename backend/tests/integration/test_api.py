@@ -418,3 +418,225 @@ class TestRollupAlignment:
         assert data["total_messages"] == 0
         assert data["spf_pass"] == 0
         assert data["dkim_pass"] == 0
+
+
+class TestUploadEndpoint:
+    """Test bulk upload endpoint"""
+
+    def test_upload_single_xml_file(self, client, db_session, sample_xml):
+        """Test uploading single XML file"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.xml", BytesIO(sample_xml), "application/xml"))
+        ]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_files"] == 1
+        assert data["uploaded"] == 1
+        assert data["duplicates"] == 0
+        assert data["errors"] == 0
+        assert data["invalid_files"] == 0
+        assert data["auto_processed"] is True
+        assert len(data["files"]) == 1
+
+        file_detail = data["files"][0]
+        assert file_detail["filename"] == "report.xml"
+        assert file_detail["status"] == "uploaded"
+        assert file_detail["content_hash"] is not None
+
+    def test_upload_gzip_file(self, client, db_session, sample_gzip):
+        """Test uploading gzip file"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.xml.gz", BytesIO(sample_gzip), "application/gzip"))
+        ]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["uploaded"] == 1
+        assert data["files"][0]["status"] == "uploaded"
+
+    def test_upload_zip_file(self, client, db_session, sample_zip):
+        """Test uploading zip file"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.zip", BytesIO(sample_zip), "application/zip"))
+        ]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["uploaded"] == 1
+        assert data["files"][0]["status"] == "uploaded"
+
+    def test_upload_multiple_files(self, client, db_session, sample_xml, sample_gzip):
+        """Test uploading multiple files"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report1.xml", BytesIO(sample_xml), "application/xml")),
+            ("files", ("report2.xml.gz", BytesIO(sample_gzip), "application/gzip"))
+        ]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_files"] == 2
+        assert data["uploaded"] == 2
+        assert len(data["files"]) == 2
+
+    def test_upload_duplicate_file(self, client, db_session, sample_xml):
+        """Test uploading same file twice"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.xml", BytesIO(sample_xml), "application/xml"))
+        ]
+
+        # Upload first time
+        response1 = client.post("/api/upload", files=files)
+        assert response1.status_code == 200
+        data1 = response1.json()
+        assert data1["uploaded"] == 1
+
+        # Upload second time (duplicate)
+        response2 = client.post("/api/upload", files=files)
+        assert response2.status_code == 200
+        data2 = response2.json()
+        assert data2["total_files"] == 1
+        assert data2["duplicates"] == 1
+        assert data2["uploaded"] == 0
+        assert data2["files"][0]["status"] == "duplicate"
+
+    def test_upload_invalid_extension(self, client, db_session):
+        """Test uploading file with invalid extension"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.txt", BytesIO(b"invalid content"), "text/plain"))
+        ]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_files"] == 1
+        assert data["invalid_files"] == 1
+        assert data["uploaded"] == 0
+        assert data["files"][0]["status"] == "invalid"
+        assert "Invalid file extension" in data["files"][0]["error_message"]
+
+    def test_upload_without_auto_process(self, client, db_session, sample_xml):
+        """Test uploading without auto-processing"""
+        from io import BytesIO
+
+        files = [
+            ("files", ("report.xml", BytesIO(sample_xml), "application/xml"))
+        ]
+
+        response = client.post("/api/upload?auto_process=false", files=files)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["uploaded"] == 1
+        assert data["auto_processed"] is False
+        assert data["reports_processed"] is None
+
+    def test_upload_no_files(self, client, db_session):
+        """Test upload with no files"""
+        response = client.post("/api/upload", files=[])
+        assert response.status_code == 422  # Validation error
+
+
+class TestAuthentication:
+    """Test API key authentication"""
+
+    def test_upload_without_api_key(self, client, db_session, monkeypatch):
+        """Test upload without API key when required"""
+        from app.config import Settings
+
+        # Mock settings to require API key
+        def mock_get_settings():
+            settings = Settings()
+            settings.require_api_key = True
+            settings.api_keys = "test-key-1,test-key-2"
+            return settings
+
+        monkeypatch.setattr("app.middleware.auth.get_settings", mock_get_settings)
+
+        from io import BytesIO
+        files = [("files", ("test.xml", BytesIO(b"<xml/>"), "application/xml"))]
+
+        response = client.post("/api/upload", files=files)
+        assert response.status_code == 401
+
+    def test_upload_with_invalid_api_key(self, client, db_session, monkeypatch):
+        """Test upload with invalid API key"""
+        from app.config import Settings
+
+        # Mock settings to require API key
+        def mock_get_settings():
+            settings = Settings()
+            settings.require_api_key = True
+            settings.api_keys = "test-key-1,test-key-2"
+            return settings
+
+        monkeypatch.setattr("app.middleware.auth.get_settings", mock_get_settings)
+
+        from io import BytesIO
+        files = [("files", ("test.xml", BytesIO(b"<xml/>"), "application/xml"))]
+        headers = {"X-API-Key": "invalid-key"}
+
+        response = client.post("/api/upload", files=files, headers=headers)
+        assert response.status_code == 403
+
+    def test_upload_with_valid_api_key(self, client, db_session, sample_xml, monkeypatch):
+        """Test upload with valid API key"""
+        from app.config import Settings
+
+        # Mock settings to require API key
+        def mock_get_settings():
+            settings = Settings()
+            settings.require_api_key = True
+            settings.api_keys = "test-key-1,test-key-2"
+            return settings
+
+        monkeypatch.setattr("app.middleware.auth.get_settings", mock_get_settings)
+
+        from io import BytesIO
+        files = [("files", ("test.xml", BytesIO(sample_xml), "application/xml"))]
+        headers = {"X-API-Key": "test-key-1"}
+
+        response = client.post("/api/upload", files=files, headers=headers)
+        assert response.status_code == 200
+
+    def test_trigger_endpoints_require_auth(self, client, db_session, monkeypatch):
+        """Test that trigger endpoints require authentication"""
+        from app.config import Settings
+
+        # Mock settings to require API key
+        def mock_get_settings():
+            settings = Settings()
+            settings.require_api_key = True
+            settings.api_keys = "test-key-1"
+            return settings
+
+        monkeypatch.setattr("app.middleware.auth.get_settings", mock_get_settings)
+
+        # Test email ingestion trigger
+        response = client.post("/api/trigger/email-ingestion")
+        assert response.status_code == 401
+
+        # Test processing trigger
+        response = client.post("/api/trigger/process-reports")
+        assert response.status_code == 401

@@ -5,12 +5,15 @@ A production-ready MVP that ingests DMARC aggregate reports (RUA) from an email 
 ## Features
 
 - 📧 Automated DMARC report ingestion from IMAP inbox
+- 📤 Bulk file upload (50-200 reports via drag-and-drop)
 - 🔄 Idempotent processing (avoids duplicates)
 - 💾 PostgreSQL storage for parsed reports
+- 🔒 API key authentication & rate limiting
 - 🚀 RESTful API with FastAPI
 - 📊 Interactive dashboard with visualizations
-- ✅ Comprehensive test coverage
+- ✅ Comprehensive test coverage (70%+ enforced)
 - 🐳 Single-command deployment with Docker Compose
+- 🔔 Multi-channel alerting (Email, Slack, Discord, Teams)
 
 ## Tech Stack
 
@@ -64,26 +67,53 @@ DATABASE_URL=postgresql://dmarc:dmarc@db:5432/dmarc
 
 ## API Endpoints
 
+### Core Endpoints
+- `GET /api/domains` - List all domains with report counts
 - `GET /api/reports` - List all reports with pagination
-- `GET /api/reports/{id}` - Get specific report details
-- `GET /api/stats/by-domain` - Statistics grouped by domain
-- `GET /api/stats/by-date` - Statistics grouped by date
-- `GET /api/stats/by-source-ip` - Top source IPs
-- `POST /api/ingest/trigger` - Manually trigger email ingest
+- `GET /api/rollup/summary` - Aggregate summary statistics
+- `GET /api/rollup/sources` - Top source IPs analysis
+- `GET /api/rollup/alignment` - DKIM/SPF alignment statistics
 
-## Running Tests
+### Upload & Triggers
+- `POST /api/upload` - Bulk upload DMARC report files (requires API key)
+- `POST /api/trigger/email-ingestion` - Manually trigger email ingestion (requires API key)
+- `POST /api/trigger/process-reports` - Process pending reports (requires API key)
+
+### Utilities
+- `GET /health` - Health check endpoint
+- `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /redoc` - Alternative API documentation (ReDoc)
+
+**Note**: Protected endpoints require `X-API-Key` header in production.
+
+## Testing
+
+The project includes comprehensive test coverage (70%+ enforced) with unit and integration tests.
+
+### Quick Test Commands
 
 ```bash
-# Run all tests
-docker compose exec backend pytest
+# Run all tests with coverage
+docker compose exec backend pytest -v --cov=app
 
-# Run with coverage
-docker compose exec backend pytest --cov=app
+# Run only unit tests (fast)
+docker compose exec backend pytest tests/unit/ -v
 
-# Run specific test types
-docker compose exec backend pytest tests/unit/
-docker compose exec backend pytest tests/integration/
+# Run only integration tests
+docker compose exec backend pytest tests/integration/ -v
+
+# Generate HTML coverage report
+docker compose exec backend pytest --cov=app --cov-report=html
 ```
+
+### CI/CD
+
+Tests run automatically on GitHub Actions for:
+- All pushes to `main` and `develop` branches
+- All pull requests
+- Includes linting, security scans, and Docker builds
+
+**For detailed testing documentation, see [`backend/TESTING.md`](backend/TESTING.md)**
 
 ## Development
 
@@ -106,12 +136,39 @@ docker compose up
 
 ```
 dmarc/
-├── backend/           # FastAPI application
-├── frontend/          # Dashboard UI
-├── nginx/             # Web server config
-├── docker-compose.yml # Service orchestration
-└── .env.sample        # Environment template
+├── backend/
+│   ├── app/                  # FastAPI application
+│   ├── tests/                # Test suite
+│   ├── DEPLOYMENT.md         # Production deployment guide
+│   └── TESTING.md            # Testing documentation
+├── frontend/                 # Dashboard UI
+├── nginx/                    # Web server config
+├── .github/workflows/        # CI/CD pipelines
+├── docker-compose.yml        # Service orchestration
+└── .env.sample              # Environment template
 ```
+
+## Production Deployment
+
+For production deployment with security hardening, SSL/TLS, backups, and monitoring:
+
+**See [`backend/DEPLOYMENT.md`](backend/DEPLOYMENT.md)** for the complete production deployment guide.
+
+Key production features:
+- 🔐 API key authentication
+- ⏱️ Rate limiting (upload: 20/hour, API: 100/min)
+- 🔒 SSL/TLS with Let's Encrypt
+- 🛡️ Security headers and CORS configuration
+- 🔔 Multi-channel alerting
+- 💾 Automated database backups
+- 📊 Health monitoring
+- 🔑 Optional basic auth for dashboard
+
+## Documentation
+
+- **[DEPLOYMENT.md](backend/DEPLOYMENT.md)** - Production deployment guide
+- **[TESTING.md](backend/TESTING.md)** - Testing and QA documentation
+- **[API Docs](http://localhost:8000/docs)** - Interactive API documentation (when running)
 
 ## License
 

@@ -545,8 +545,38 @@ async function viewReport(id) {
                         </tr>
                     </table>
                 </div>
+                <div class="detail-section">
+                    <h3>Authentication Records</h3>
+                    <div id="recordsInfo">
+                        <div id="recordsLoading" class="loading">Loading records...</div>
+                        <table id="recordsTable" class="records-table" style="display: none;">
+                            <thead>
+                                <tr>
+                                    <th>Source IP</th>
+                                    <th>Messages</th>
+                                    <th>DKIM</th>
+                                    <th>SPF</th>
+                                    <th>Disposition</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recordsTableBody"></tbody>
+                        </table>
+                        <div id="recordsPagination" class="pagination" style="display: none;"></div>
+                    </div>
+                </div>
+                <div id="recordDetail" class="detail-section" style="display: none;">
+                    <h3>
+                        Record Detail
+                        <button class="btn-secondary" onclick="hideRecordDetail()">← Back</button>
+                    </h3>
+                    <div id="recordDetailContent"></div>
+                </div>
             </div>
         `;
+
+        // Load records for this report
+        await loadRecordsForReport(id);
     } catch (error) {
         modalBody.innerHTML = '<div class="error">Error loading report details. Please try again.</div>';
         console.error('Error loading report:', error);
@@ -906,4 +936,270 @@ function formatDateRange(begin, end) {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
     return `${formatDate(begin)} - ${formatDate(end)}`;
+}
+
+// ===========================================
+// RECORD-LEVEL DEEP DIVE FUNCTIONS
+// ===========================================
+
+// Load records for a report
+async function loadRecordsForReport(reportId, page = 1) {
+    const loadingDiv = document.getElementById('recordsLoading');
+    const recordsTable = document.getElementById('recordsTable');
+    const recordsBody = document.getElementById('recordsTableBody');
+
+    if (!loadingDiv || !recordsTable || !recordsBody) {
+        console.error('Records elements not found in DOM');
+        return;
+    }
+
+    loadingDiv.style.display = 'block';
+    recordsTable.style.display = 'none';
+
+    try {
+        const response = await fetch(`${API_BASE}/reports/${reportId}/records?page=${page}&page_size=50`);
+        if (!response.ok) {
+            throw new Error('Failed to load records');
+        }
+        const data = await response.json();
+
+        // Clear existing rows
+        recordsBody.innerHTML = '';
+
+        // Populate table
+        data.records.forEach(record => {
+            const row = recordsBody.insertRow();
+
+            // Source IP (safe - textContent)
+            row.insertCell(0).textContent = record.source_ip;
+
+            // Message count (safe - textContent)
+            row.insertCell(1).textContent = record.count.toLocaleString();
+
+            // DKIM result (badge element)
+            const dkimCell = row.insertCell(2);
+            dkimCell.appendChild(createAuthBadge(record.dkim_result));
+
+            // SPF result (badge element)
+            const spfCell = row.insertCell(3);
+            spfCell.appendChild(createAuthBadge(record.spf_result));
+
+            // Disposition (badge element)
+            const dispCell = row.insertCell(4);
+            dispCell.appendChild(createDispositionBadge(record.disposition));
+
+            // Actions (View Details button)
+            const actionCell = row.insertCell(5);
+            const viewBtn = document.createElement('button');
+            viewBtn.textContent = 'View';
+            viewBtn.className = 'btn-secondary btn-sm';
+            viewBtn.onclick = () => viewRecordDetail(record);
+            actionCell.appendChild(viewBtn);
+
+            // Color row based on alignment status
+            row.className = getAlignmentClass(record);
+        });
+
+        // Show table and pagination
+        loadingDiv.style.display = 'none';
+        recordsTable.style.display = 'table';
+
+        // Update pagination controls
+        updateRecordsPagination(reportId, data.page, data.page_size, data.total);
+
+    } catch (error) {
+        console.error('Error loading records:', error);
+        loadingDiv.textContent = 'Failed to load records';
+    }
+}
+
+// Display detailed view for a single record (using safe DOM methods)
+function viewRecordDetail(record) {
+    const detailDiv = document.getElementById('recordDetail');
+    const contentDiv = document.getElementById('recordDetailContent');
+
+    if (!detailDiv || !contentDiv) {
+        console.error('Record detail elements not found');
+        return;
+    }
+
+    // Clear previous content
+    contentDiv.innerHTML = '';
+
+    // Create detail grid
+    const grid = document.createElement('div');
+    grid.className = 'detail-grid';
+
+    // Source Information Card
+    const sourceCard = createDetailCard('Source Information', [
+        { label: 'Source IP', value: record.source_ip },
+        { label: 'Message Count', value: record.count.toLocaleString() },
+        { label: 'Disposition', value: record.disposition, badge: createDispositionBadge(record.disposition) }
+    ]);
+    grid.appendChild(sourceCard);
+
+    // DKIM Authentication Card
+    const dkimCard = createDetailCard('DKIM Authentication', [
+        { label: 'Result', value: record.dkim_result || 'N/A', badge: createAuthBadge(record.dkim_result) },
+        { label: 'Domain', value: record.dkim_domain || 'N/A' },
+        { label: 'Selector', value: record.dkim_selector || 'N/A' }
+    ]);
+    grid.appendChild(dkimCard);
+
+    // SPF Authentication Card
+    const spfCard = createDetailCard('SPF Authentication', [
+        { label: 'Result', value: record.spf_result || 'N/A', badge: createAuthBadge(record.spf_result) },
+        { label: 'Domain', value: record.spf_domain || 'N/A' },
+        { label: 'Scope', value: record.spf_scope || 'N/A' }
+    ]);
+    grid.appendChild(spfCard);
+
+    // Email Headers Card
+    const headersCard = createDetailCard('Email Headers', [
+        { label: 'From (Header)', value: record.header_from || 'N/A' },
+        { label: 'From (Envelope)', value: record.envelope_from || 'N/A' },
+        { label: 'To (Envelope)', value: record.envelope_to || 'N/A' }
+    ]);
+    grid.appendChild(headersCard);
+
+    contentDiv.appendChild(grid);
+
+    // Hide records table, show detail view
+    document.getElementById('recordsInfo').style.display = 'none';
+    detailDiv.style.display = 'block';
+}
+
+// HELPER: Create detail card (safe DOM method)
+function createDetailCard(title, rows) {
+    const card = document.createElement('div');
+    card.className = 'detail-card';
+
+    const heading = document.createElement('h4');
+    heading.textContent = title;
+    card.appendChild(heading);
+
+    const table = document.createElement('div');
+    table.className = 'detail-table';
+
+    rows.forEach(({ label, value, badge }) => {
+        const row = document.createElement('div');
+        row.className = 'detail-row';
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'detail-label';
+        labelSpan.textContent = label + ':';
+        row.appendChild(labelSpan);
+
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'detail-value';
+        if (badge) {
+            valueSpan.appendChild(badge);
+        } else {
+            valueSpan.textContent = value;
+        }
+        row.appendChild(valueSpan);
+
+        table.appendChild(row);
+    });
+
+    card.appendChild(table);
+    return card;
+}
+
+// Hide record detail and show records table
+function hideRecordDetail() {
+    document.getElementById('recordDetail').style.display = 'none';
+    document.getElementById('recordsInfo').style.display = 'block';
+}
+
+// Create authentication result badge (returns DOM element)
+function createAuthBadge(result) {
+    const span = document.createElement('span');
+    span.className = 'badge';
+
+    if (!result) {
+        span.className += ' badge-gray';
+        span.textContent = 'N/A';
+    } else if (result === 'pass') {
+        span.className += ' badge-success';
+        span.textContent = 'PASS';
+    } else {
+        span.className += ' badge-danger';
+        span.textContent = result.toUpperCase();
+    }
+
+    return span;
+}
+
+// Create disposition badge (returns DOM element)
+function createDispositionBadge(disposition) {
+    const span = document.createElement('span');
+    span.className = 'badge';
+
+    const colorMap = {
+        'none': 'badge-success',
+        'quarantine': 'badge-warning',
+        'reject': 'badge-danger'
+    };
+
+    span.className += ' ' + (colorMap[disposition] || 'badge-gray');
+    span.textContent = (disposition || 'N/A').toUpperCase();
+
+    return span;
+}
+
+// Get row class based on alignment
+function getAlignmentClass(record) {
+    const dkimPass = record.dkim_result === 'pass';
+    const spfPass = record.spf_result === 'pass';
+
+    if (dkimPass && spfPass) return 'row-pass';
+    if (!dkimPass && !spfPass) return 'row-fail';
+    return 'row-partial';
+}
+
+// Update pagination controls
+function updateRecordsPagination(reportId, currentPage, pageSize, total) {
+    const paginationDiv = document.getElementById('recordsPagination');
+    const totalPages = Math.ceil(total / pageSize);
+
+    if (!paginationDiv) {
+        console.error('Pagination element not found');
+        return;
+    }
+
+    if (totalPages <= 1) {
+        paginationDiv.style.display = 'none';
+        return;
+    }
+
+    // Clear previous content
+    paginationDiv.innerHTML = '';
+
+    const controls = document.createElement('div');
+    controls.className = 'pagination-controls';
+
+    // Page indicator
+    const pageText = document.createElement('span');
+    pageText.textContent = `Page ${currentPage} of ${totalPages}`;
+    controls.appendChild(pageText);
+
+    // Previous button
+    if (currentPage > 1) {
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = 'Previous';
+        prevBtn.onclick = () => loadRecordsForReport(reportId, currentPage - 1);
+        controls.appendChild(prevBtn);
+    }
+
+    // Next button
+    if (currentPage < totalPages) {
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = 'Next';
+        nextBtn.onclick = () => loadRecordsForReport(reportId, currentPage + 1);
+        controls.appendChild(nextBtn);
+    }
+
+    paginationDiv.appendChild(controls);
+    paginationDiv.style.display = 'block';
 }
