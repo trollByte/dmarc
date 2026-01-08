@@ -73,10 +73,22 @@ A production-ready MVP that ingests DMARC aggregate reports (RUA) from an email 
 
 3. **Start the application**
    ```bash
-   docker compose up
+   docker compose up -d
    ```
 
-4. **Access the application**
+4. **Run database migrations** (required for first-time setup)
+   ```bash
+   docker compose exec backend alembic upgrade head
+   ```
+
+   This creates all necessary database tables and indexes. You should see:
+   ```
+   INFO  [alembic.runtime.migration] Running upgrade -> 001
+   INFO  [alembic.runtime.migration] Running upgrade 001 -> 002
+   INFO  [alembic.runtime.migration] Running upgrade 002 -> 003
+   ```
+
+5. **Access the application**
    - Dashboard: http://localhost
    - API Documentation: http://localhost:8000/docs
    - Health Check: http://localhost/health
@@ -272,10 +284,33 @@ docker compose up --build
 # Stop services
 docker compose down
 
-# Reset database
+# Reset database (WARNING: deletes all data)
 docker compose down -v
-docker compose up
+docker compose up -d
+docker compose exec backend alembic upgrade head
+
+# Create a new migration (after model changes)
+docker compose exec backend alembic revision --autogenerate -m "description"
+
+# Check current migration version
+docker compose exec backend alembic current
+
+# View migration history
+docker compose exec backend alembic history
 ```
+
+### Database Migrations
+
+The project uses Alembic for database schema management. Three migrations are included:
+
+1. **001_create_ingested_reports.py** - Creates table for tracking ingested email reports
+2. **002_create_dmarc_tables.py** - Creates main DMARC report and record tables
+3. **003_add_performance_indexes.py** - Adds indexes for query optimization
+
+**Important**: Always run migrations after:
+- Fresh deployment
+- Pulling updates that include new migrations
+- Resetting the database
 
 ## Project Structure
 
