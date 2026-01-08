@@ -91,7 +91,7 @@ class IngestionService:
                 f"Created ingestion record",
                 extra={
                     "record_id": record.id,
-                    "filename": filename,
+                    "report_file": filename,
                     "content_hash": content_hash,
                     "status": status
                 }
@@ -137,7 +137,7 @@ class IngestionService:
             logger.info(
                 f"Skipping duplicate attachment",
                 extra={
-                    "filename": filename,
+                    "report_file": filename,
                     "content_hash": content_hash,
                     "message_id": message_id
                 }
@@ -163,7 +163,7 @@ class IngestionService:
                 f"Successfully ingested attachment",
                 extra={
                     "record_id": record.id,
-                    "filename": filename,
+                    "report_file": filename,
                     "file_size": file_size,
                     "storage_path": storage_path
                 }
@@ -175,7 +175,7 @@ class IngestionService:
             logger.error(
                 f"Failed to process attachment",
                 extra={
-                    "filename": filename,
+                    "report_file": filename,
                     "message_id": message_id,
                     "error": str(e)
                 },
