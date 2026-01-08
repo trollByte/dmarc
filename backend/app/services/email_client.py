@@ -206,7 +206,7 @@ class IMAPClient:
                 attachments.append((filename, content))
                 logger.debug(
                     f"Found attachment",
-                    extra={"filename": filename, "size": len(content)}
+                    extra={"report_file": filename, "size": len(content)}
                 )
 
         return attachments
