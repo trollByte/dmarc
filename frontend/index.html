@@ -14,7 +14,15 @@
             <div class="header-actions">
                 <button id="uploadBtn" class="btn-primary">📤 Upload Reports</button>
                 <button id="ingestBtn" class="btn-primary">🔄 Process Reports</button>
-                <button id="exportBtn" class="btn-secondary">📥 Export CSV</button>
+                <div class="export-dropdown">
+                    <button id="exportBtn" class="btn-secondary">📥 Export ▾</button>
+                    <div class="export-menu" id="exportMenu">
+                        <a href="#" id="exportReportsCSV">Reports (CSV)</a>
+                        <a href="#" id="exportRecordsCSV">Records (CSV)</a>
+                        <a href="#" id="exportSourcesCSV">Sources (CSV)</a>
+                        <a href="#" id="exportPDF">Summary Report (PDF)</a>
+                    </div>
+                </div>
                 <button id="refreshBtn" class="btn-secondary">↻ Refresh</button>
             </div>
         </header>
@@ -44,6 +52,57 @@
             </div>
             <button id="applyFiltersBtn" class="btn-small">Apply Filters</button>
             <button id="clearFiltersBtn" class="btn-small">Clear</button>
+
+            <div class="advanced-filters">
+                <button id="toggleAdvancedFilters" class="btn-small">⚙ Advanced Filters</button>
+                <div id="advancedFiltersPanel" class="advanced-filters-panel" style="display: none;">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="sourceIpFilter">Source IP:</label>
+                            <input type="text" id="sourceIpFilter" placeholder="e.g., 192.168.1.1">
+                        </div>
+                        <div class="filter-group">
+                            <label for="sourceIpRangeFilter">IP Range (CIDR):</label>
+                            <input type="text" id="sourceIpRangeFilter" placeholder="e.g., 192.168.1.0/24">
+                        </div>
+                    </div>
+
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="dkimFilter">DKIM Result:</label>
+                            <select id="dkimFilter">
+                                <option value="">Any</option>
+                                <option value="pass">Pass</option>
+                                <option value="fail">Fail</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="spfFilter">SPF Result:</label>
+                            <select id="spfFilter">
+                                <option value="">Any</option>
+                                <option value="pass">Pass</option>
+                                <option value="fail">Fail</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="dispositionFilter">Disposition:</label>
+                            <select id="dispositionFilter">
+                                <option value="">Any</option>
+                                <option value="none">None</option>
+                                <option value="quarantine">Quarantine</option>
+                                <option value="reject">Reject</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="orgNameFilter">Organization:</label>
+                            <input type="text" id="orgNameFilter" placeholder="e.g., google.com">
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="stats-grid">
@@ -84,6 +143,28 @@
             <div class="chart-container">
                 <h2>Disposition Breakdown</h2>
                 <canvas id="dispositionChart"></canvas>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h2>SPF/DKIM Alignment Breakdown</h2>
+                <canvas id="alignmentChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Policy Compliance</h2>
+                <canvas id="complianceChart"></canvas>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h2>Failure Rate Trend (with 7-day moving average)</h2>
+                <canvas id="failureTrendChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h2>Top Sending Organizations</h2>
+                <canvas id="topOrganizationsChart"></canvas>
             </div>
         </div>
 

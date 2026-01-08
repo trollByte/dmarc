@@ -18,3 +18,5 @@ python-multipart==0.0.6
 slowapi==0.1.9
 redis==5.0.1
 hiredis==2.3.2
+reportlab==4.0.9
+Pillow==10.2.0

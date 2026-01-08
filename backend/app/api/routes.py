@@ -2,11 +2,13 @@
 API routes for DMARC reporting and rollups
 """
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Security, Request, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case
 from typing import Optional, List
 from datetime import datetime
 import logging
+import io
 
 from app.database import get_db
 from app.models import DmarcReport, DmarcRecord
@@ -248,6 +250,12 @@ async def rollup_summary(
     domain: Optional[str] = Query(None, description="Filter by domain"),
     start: Optional[datetime] = Query(None, description="Filter by start date"),
     end: Optional[datetime] = Query(None, description="Filter by end date"),
+    source_ip: Optional[str] = Query(None, description="Filter by source IP"),
+    source_ip_range: Optional[str] = Query(None, description="Filter by IP range (CIDR)"),
+    dkim_result: Optional[str] = Query(None, description="Filter by DKIM result"),
+    spf_result: Optional[str] = Query(None, description="Filter by SPF result"),
+    disposition: Optional[str] = Query(None, description="Filter by disposition"),
+    org_name: Optional[str] = Query(None, description="Filter by organization name"),
     db: Session = Depends(get_db)
 ):
     """
@@ -262,6 +270,8 @@ async def rollup_summary(
         reports_query = reports_query.filter(DmarcReport.date_begin >= start)
     if end:
         reports_query = reports_query.filter(DmarcReport.date_end <= end)
+    if org_name:
+        reports_query = reports_query.filter(DmarcReport.org_name.ilike(f"%{org_name}%"))
 
     # Get report IDs and date range
     reports = reports_query.all()
@@ -313,7 +323,42 @@ async def rollup_summary(
                 else_=0
             )
         ).label('disp_reject')
-    ).filter(DmarcRecord.report_id.in_(report_ids)).one()
+    ).filter(DmarcRecord.report_id.in_(report_ids))
+
+    # Apply record-level filters
+    if source_ip:
+        records_query = records_query.filter(DmarcRecord.source_ip == source_ip)
+    if source_ip_range:
+        from app.utils.ip_utils import ip_in_range
+        # For CIDR filtering, filter in memory for now
+        # TODO: Could use PostgreSQL inet operators for better performance
+        all_records = db.query(DmarcRecord).filter(DmarcRecord.report_id.in_(report_ids)).all()
+        filtered_ids = [r.id for r in all_records if ip_in_range(r.source_ip, source_ip_range)]
+        if filtered_ids:
+            records_query = records_query.filter(DmarcRecord.id.in_(filtered_ids))
+        else:
+            # No matching IPs, return empty stats
+            return SummaryStats(
+                total_messages=0,
+                total_reports=0,
+                pass_count=0,
+                fail_count=0,
+                pass_percentage=0.0,
+                fail_percentage=0.0,
+                disposition_none=0,
+                disposition_quarantine=0,
+                disposition_reject=0,
+                date_range_start=date_range_start,
+                date_range_end=date_range_end
+            )
+    if dkim_result:
+        records_query = records_query.filter(DmarcRecord.dkim_result == dkim_result)
+    if spf_result:
+        records_query = records_query.filter(DmarcRecord.spf_result == spf_result)
+    if disposition:
+        records_query = records_query.filter(DmarcRecord.disposition == disposition)
+
+    records_query = records_query.one()
 
     total_messages = records_query.total_count or 0
     pass_count = records_query.pass_count or 0
@@ -342,6 +387,10 @@ async def rollup_sources(
     domain: Optional[str] = Query(None, description="Filter by domain"),
     start: Optional[datetime] = Query(None, description="Filter by start date"),
     end: Optional[datetime] = Query(None, description="Filter by end date"),
+    dkim_result: Optional[str] = Query(None, description="Filter by DKIM result"),
+    spf_result: Optional[str] = Query(None, description="Filter by SPF result"),
+    disposition: Optional[str] = Query(None, description="Filter by disposition"),
+    org_name: Optional[str] = Query(None, description="Filter by organization"),
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Page size"),
     db: Session = Depends(get_db)
@@ -358,6 +407,8 @@ async def rollup_sources(
         reports_query = reports_query.filter(DmarcReport.date_begin >= start)
     if end:
         reports_query = reports_query.filter(DmarcReport.date_end <= end)
+    if org_name:
+        reports_query = reports_query.join(DmarcReport).filter(DmarcReport.org_name.ilike(f"%{org_name}%"))
 
     report_ids = [r.id for r in reports_query.all()]
 
@@ -382,7 +433,17 @@ async def rollup_sources(
         func.count(DmarcRecord.id).label('report_count')
     ).filter(
         DmarcRecord.report_id.in_(report_ids)
-    ).group_by(
+    )
+
+    # Apply record-level filters
+    if dkim_result:
+        sources_query = sources_query.filter(DmarcRecord.dkim_result == dkim_result)
+    if spf_result:
+        sources_query = sources_query.filter(DmarcRecord.spf_result == spf_result)
+    if disposition:
+        sources_query = sources_query.filter(DmarcRecord.disposition == disposition)
+
+    sources_query = sources_query.group_by(
         DmarcRecord.source_ip
     ).order_by(
         func.sum(DmarcRecord.count).desc()
@@ -608,6 +669,267 @@ async def rollup_timeline(
     cache.set(cache_k, response_data, ttl=300)
 
     return TimelineListResponse(**response_data)
+
+
+@router.get("/api/rollup/alignment-breakdown")
+async def rollup_alignment_breakdown(
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    start: Optional[datetime] = Query(None, description="Filter by start date"),
+    end: Optional[datetime] = Query(None, description="Filter by end date"),
+    days: int = Query(30, ge=1, le=365, description="Number of days"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed alignment breakdown for stacked bar chart
+    Returns counts for: both_pass, dkim_only, spf_only, both_fail
+    """
+    from datetime import timedelta
+    from app.services.cache import get_cache, cache_key
+
+    # Try cache first
+    cache = get_cache()
+    cache_k = cache_key("alignment_breakdown", domain=domain, days=days, start=start, end=end)
+    cached = cache.get(cache_k)
+    if cached:
+        return cached
+
+    # Build query for report IDs
+    reports_query = db.query(DmarcReport.id)
+
+    if domain:
+        reports_query = reports_query.filter(DmarcReport.domain == domain)
+
+    # Date filtering
+    if start and end:
+        reports_query = reports_query.filter(
+            DmarcReport.date_begin >= start,
+            DmarcReport.date_end <= end
+        )
+    elif not start and not end:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days)
+        reports_query = reports_query.filter(
+            DmarcReport.date_end >= start_dt,
+            DmarcReport.date_end <= end_dt
+        )
+
+    report_ids = [r.id for r in reports_query.all()]
+
+    if not report_ids:
+        result = {
+            "both_pass": 0,
+            "dkim_only": 0,
+            "spf_only": 0,
+            "both_fail": 0,
+            "total": 0
+        }
+        cache.set(cache_k, result, ttl=300)
+        return result
+
+    # Aggregate by alignment status
+    stats = db.query(
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result == 'pass', DmarcRecord.spf_result == 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('both_pass'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result == 'pass', DmarcRecord.spf_result != 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('dkim_only'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result != 'pass', DmarcRecord.spf_result == 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('spf_only'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result != 'pass', DmarcRecord.spf_result != 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('both_fail'),
+        func.sum(DmarcRecord.count).label('total')
+    ).filter(DmarcRecord.report_id.in_(report_ids)).one()
+
+    result = {
+        "both_pass": stats.both_pass or 0,
+        "dkim_only": stats.dkim_only or 0,
+        "spf_only": stats.spf_only or 0,
+        "both_fail": stats.both_fail or 0,
+        "total": stats.total or 0
+    }
+
+    # Cache for 5 minutes
+    cache.set(cache_k, result, ttl=300)
+
+    return result
+
+
+@router.get("/api/rollup/failure-trend")
+async def rollup_failure_trend(
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    days: int = Query(30, ge=1, le=365, description="Number of days"),
+    window_size: int = Query(7, ge=1, le=30, description="Moving average window"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get failure rate trend over time with moving average
+    """
+    from datetime import timedelta
+    from sqlalchemy import cast, Date
+    from app.services.cache import get_cache, cache_key
+
+    cache = get_cache()
+    cache_k = cache_key("failure_trend", domain=domain, days=days, window=window_size)
+    cached = cache.get(cache_k)
+    if cached:
+        return cached
+
+    # Get daily failure rates
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    query = db.query(
+        cast(DmarcReport.date_end, Date).label('date'),
+        func.sum(DmarcRecord.count).label('total'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result != 'pass', DmarcRecord.spf_result != 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('failures')
+    ).join(
+        DmarcRecord, DmarcReport.id == DmarcRecord.report_id
+    ).filter(
+        DmarcReport.date_end >= start_date,
+        DmarcReport.date_end <= end_date
+    )
+
+    if domain:
+        query = query.filter(DmarcReport.domain == domain)
+
+    query = query.group_by(cast(DmarcReport.date_end, Date))
+    query = query.order_by(cast(DmarcReport.date_end, Date))
+
+    results = query.all()
+
+    # Calculate failure rates and moving average
+    trend_data = []
+    failure_rates = []
+
+    for row in results:
+        total = row.total or 0
+        failures = row.failures or 0
+        failure_rate = (failures / total * 100) if total > 0 else 0
+
+        failure_rates.append(failure_rate)
+
+        # Calculate moving average
+        if len(failure_rates) >= window_size:
+            moving_avg = sum(failure_rates[-window_size:]) / window_size
+        else:
+            moving_avg = sum(failure_rates) / len(failure_rates) if failure_rates else 0
+
+        trend_data.append({
+            "date": row.date.strftime('%Y-%m-%d'),
+            "failure_rate": round(failure_rate, 2),
+            "moving_average": round(moving_avg, 2),
+            "total_messages": total,
+            "failed_messages": failures
+        })
+
+    result = {
+        "trend": trend_data,
+        "window_size": window_size
+    }
+
+    cache.set(cache_k, result, ttl=300)
+    return result
+
+
+@router.get("/api/rollup/top-organizations")
+async def rollup_top_organizations(
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    days: int = Query(30, ge=1, le=365, description="Number of days"),
+    limit: int = Query(10, ge=1, le=50, description="Number of organizations"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get top sending organizations by message volume
+    """
+    from datetime import timedelta
+    from app.services.cache import get_cache, cache_key
+
+    cache = get_cache()
+    cache_k = cache_key("top_orgs", domain=domain, days=days, limit=limit)
+    cached = cache.get(cache_k)
+    if cached:
+        return cached
+
+    # Date filtering
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    # Aggregate by organization
+    query = db.query(
+        DmarcReport.org_name,
+        func.count(DmarcReport.id).label('report_count'),
+        func.sum(DmarcRecord.count).label('total_messages'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result == 'pass', DmarcRecord.spf_result == 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('pass_count')
+    ).join(
+        DmarcRecord, DmarcReport.id == DmarcRecord.report_id
+    ).filter(
+        DmarcReport.date_end >= start_date,
+        DmarcReport.date_end <= end_date
+    )
+
+    if domain:
+        query = query.filter(DmarcReport.domain == domain)
+
+    query = query.group_by(DmarcReport.org_name)
+    query = query.order_by(func.sum(DmarcRecord.count).desc())
+    query = query.limit(limit)
+
+    results = query.all()
+
+    organizations = []
+    for row in results:
+        total = row.total_messages or 0
+        passed = row.pass_count or 0
+        failed = total - passed
+        pass_rate = (passed / total * 100) if total > 0 else 0
+
+        organizations.append({
+            "org_name": row.org_name,
+            "report_count": row.report_count,
+            "total_messages": total,
+            "pass_count": passed,
+            "fail_count": failed,
+            "pass_percentage": round(pass_rate, 2)
+        })
+
+    result = {
+        "organizations": organizations,
+        "total": len(organizations)
+    }
+
+    cache.set(cache_k, result, ttl=300)
+    return result
 
 
 @router.post("/api/ingest/trigger", response_model=IngestTriggerResponse)
@@ -961,4 +1283,234 @@ async def get_alert_config():
         discord_configured=discord_configured,
         teams_configured=teams_configured,
         webhook_configured=webhook_configured
+    )
+
+
+# ============================================================================
+# EXPORT ENDPOINTS
+# ============================================================================
+
+@router.get("/api/export/reports/csv")
+@limiter.limit("10/minute")
+async def export_reports_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key),
+    domain: Optional[str] = Query(None),
+    days: Optional[int] = Query(30),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    org_name: Optional[str] = Query(None)
+):
+    """
+    Export DMARC reports to CSV
+
+    Requires API key authentication. Rate limited to 10 requests per minute.
+
+    Returns CSV file with report metadata including:
+    - Report ID, organization, domain
+    - Date range, policy settings
+    - Record count and message totals
+    """
+    from app.services.export_csv import CSVExportService
+
+    # Parse dates if provided
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+    # Generate CSV
+    export_service = CSVExportService(db)
+    csv_content = export_service.export_reports(
+        domain=domain,
+        days=days,
+        start_date=start_dt,
+        end_date=end_dt,
+        org_name=org_name
+    )
+
+    # Create filename with timestamp
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"dmarc_reports_{timestamp}.csv"
+
+    # Return as downloadable file
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode('utf-8')),
+        media_type='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff'
+        }
+    )
+
+
+@router.get("/api/export/records/csv")
+@limiter.limit("10/minute")
+async def export_records_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key),
+    domain: Optional[str] = Query(None),
+    days: Optional[int] = Query(30),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    source_ip: Optional[str] = Query(None),
+    dkim_result: Optional[str] = Query(None),
+    spf_result: Optional[str] = Query(None),
+    disposition: Optional[str] = Query(None),
+    org_name: Optional[str] = Query(None),
+    limit: int = Query(10000, le=10000)
+):
+    """
+    Export DMARC records to CSV with full details
+
+    Requires API key authentication. Rate limited to 10 requests per minute.
+    Maximum 10,000 records per export.
+
+    Returns CSV file with detailed record information including:
+    - Source IPs, message counts, dispositions
+    - DKIM and SPF authentication results
+    - Header and envelope information
+    """
+    from app.services.export_csv import CSVExportService
+
+    # Parse dates if provided
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+    # Generate CSV
+    export_service = CSVExportService(db)
+    csv_content = export_service.export_records(
+        domain=domain,
+        days=days,
+        start_date=start_dt,
+        end_date=end_dt,
+        source_ip=source_ip,
+        dkim_result=dkim_result,
+        spf_result=spf_result,
+        disposition=disposition,
+        org_name=org_name,
+        limit=limit
+    )
+
+    # Create filename with timestamp
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"dmarc_records_{timestamp}.csv"
+
+    # Return as downloadable file
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode('utf-8')),
+        media_type='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff'
+        }
+    )
+
+
+@router.get("/api/export/sources/csv")
+@limiter.limit("10/minute")
+async def export_sources_csv(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key),
+    domain: Optional[str] = Query(None),
+    days: Optional[int] = Query(30),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    org_name: Optional[str] = Query(None),
+    limit: int = Query(1000, le=1000)
+):
+    """
+    Export aggregated source IP statistics to CSV
+
+    Requires API key authentication. Rate limited to 10 requests per minute.
+    Maximum 1,000 sources per export.
+
+    Returns CSV file with source IP aggregations including:
+    - Total message counts
+    - Pass/fail statistics
+    - Pass percentages
+    """
+    from app.services.export_csv import CSVExportService
+
+    # Parse dates if provided
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+    # Generate CSV
+    export_service = CSVExportService(db)
+    csv_content = export_service.export_sources(
+        domain=domain,
+        days=days,
+        start_date=start_dt,
+        end_date=end_dt,
+        org_name=org_name,
+        limit=limit
+    )
+
+    # Create filename with timestamp
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"dmarc_sources_{timestamp}.csv"
+
+    # Return as downloadable file
+    return StreamingResponse(
+        io.BytesIO(csv_content.encode('utf-8')),
+        media_type='text/csv',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff'
+        }
+    )
+
+
+@router.get("/api/export/report/pdf")
+@limiter.limit("5/minute")
+async def export_summary_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    api_key: str = Security(get_api_key),
+    domain: Optional[str] = Query(None),
+    days: Optional[int] = Query(30),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
+    """
+    Export comprehensive DMARC summary report as PDF
+
+    Requires API key authentication. Rate limited to 5 requests per minute
+    (more expensive than CSV exports).
+
+    Returns PDF document with:
+    - Executive summary with statistics
+    - Compliance pie chart
+    - Authentication alignment breakdown
+    - Top source IPs table
+    """
+    from app.services.export_pdf import PDFExportService
+
+    # Parse dates if provided
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+
+    # Generate PDF
+    export_service = PDFExportService(db)
+    pdf_bytes = export_service.generate_summary_report(
+        domain=domain,
+        days=days,
+        start_date=start_dt,
+        end_date=end_dt
+    )
+
+    # Create filename with timestamp
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"dmarc_summary_{timestamp}.pdf"
+
+    # Return as downloadable file
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type='application/pdf',
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Content-Type-Options': 'nosniff'
+        }
     )

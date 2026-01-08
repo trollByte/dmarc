@@ -3,13 +3,20 @@ const API_BASE = '/api';
 
 // Chart instances
 let timelineChart, domainChart, sourceIpChart, dispositionChart;
+let alignmentChart, complianceChart, failureTrendChart, topOrganizationsChart;
 
 // Current filter state
 let currentFilters = {
     domain: '',
     days: 30,
     startDate: null,
-    endDate: null
+    endDate: null,
+    sourceIp: '',
+    sourceIpRange: '',
+    dkimResult: '',
+    spfResult: '',
+    disposition: '',
+    orgName: ''
 };
 
 // Upload modal state
@@ -22,10 +29,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up button event listeners
     document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
     document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
-    document.getElementById('exportBtn').addEventListener('click', exportToCSV);
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+
+    // Export dropdown handlers
+    const exportBtn = document.getElementById('exportBtn');
+    const exportMenu = document.getElementById('exportMenu');
+
+    exportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        exportMenu.style.display = exportMenu.style.display === 'block' ? 'none' : 'block';
+    });
+
+    // Close dropdown when clicking outside
+    window.addEventListener('click', (e) => {
+        if (!e.target.matches('#exportBtn')) {
+            exportMenu.style.display = 'none';
+        }
+    });
+
+    // Export menu item handlers
+    document.getElementById('exportReportsCSV').addEventListener('click', (e) => {
+        e.preventDefault();
+        exportMenu.style.display = 'none';
+        exportData('reports');
+    });
+
+    document.getElementById('exportRecordsCSV').addEventListener('click', (e) => {
+        e.preventDefault();
+        exportMenu.style.display = 'none';
+        exportData('records');
+    });
+
+    document.getElementById('exportSourcesCSV').addEventListener('click', (e) => {
+        e.preventDefault();
+        exportMenu.style.display = 'none';
+        exportData('sources');
+    });
+
+    document.getElementById('exportPDF').addEventListener('click', (e) => {
+        e.preventDefault();
+        exportMenu.style.display = 'none';
+        exportData('pdf');
+    });
+
+    // Advanced filters toggle
+    document.getElementById('toggleAdvancedFilters').addEventListener('click', () => {
+        const panel = document.getElementById('advancedFiltersPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
 
     // Date range selector
     document.getElementById('dateRangeFilter').addEventListener('change', (e) => {
@@ -62,6 +115,10 @@ async function loadDashboard() {
             loadDomainChart(),
             loadSourceIpChart(),
             loadDispositionChart(),
+            loadAlignmentChart(),
+            loadComplianceChart(),
+            loadFailureTrendChart(),
+            loadTopOrganizationsChart(),
             loadReportsTable(),
             loadDomainFilter()
         ]);
@@ -112,6 +169,14 @@ function applyFilters() {
         currentFilters.endDate = null;
     }
 
+    // Advanced filters
+    currentFilters.sourceIp = document.getElementById('sourceIpFilter').value;
+    currentFilters.sourceIpRange = document.getElementById('sourceIpRangeFilter').value;
+    currentFilters.dkimResult = document.getElementById('dkimFilter').value;
+    currentFilters.spfResult = document.getElementById('spfFilter').value;
+    currentFilters.disposition = document.getElementById('dispositionFilter').value;
+    currentFilters.orgName = document.getElementById('orgNameFilter').value;
+
     loadDashboard();
 }
 
@@ -121,7 +186,13 @@ function clearFilters() {
         domain: '',
         days: 30,
         startDate: null,
-        endDate: null
+        endDate: null,
+        sourceIp: '',
+        sourceIpRange: '',
+        dkimResult: '',
+        spfResult: '',
+        disposition: '',
+        orgName: ''
     };
 
     document.getElementById('domainFilter').value = '';
@@ -129,6 +200,14 @@ function clearFilters() {
     document.getElementById('startDate').value = '';
     document.getElementById('endDate').value = '';
     document.querySelector('.custom-date').style.display = 'none';
+
+    // Clear advanced filters
+    document.getElementById('sourceIpFilter').value = '';
+    document.getElementById('sourceIpRangeFilter').value = '';
+    document.getElementById('dkimFilter').value = '';
+    document.getElementById('spfFilter').value = '';
+    document.getElementById('dispositionFilter').value = '';
+    document.getElementById('orgNameFilter').value = '';
 
     loadDashboard();
 }
@@ -148,6 +227,31 @@ function buildQueryString(extraParams = {}) {
     if (currentFilters.startDate && currentFilters.endDate) {
         params.append('start_date', currentFilters.startDate);
         params.append('end_date', currentFilters.endDate);
+    }
+
+    // Advanced filters
+    if (currentFilters.sourceIp) {
+        params.append('source_ip', currentFilters.sourceIp);
+    }
+
+    if (currentFilters.sourceIpRange) {
+        params.append('source_ip_range', currentFilters.sourceIpRange);
+    }
+
+    if (currentFilters.dkimResult) {
+        params.append('dkim_result', currentFilters.dkimResult);
+    }
+
+    if (currentFilters.spfResult) {
+        params.append('spf_result', currentFilters.spfResult);
+    }
+
+    if (currentFilters.disposition) {
+        params.append('disposition', currentFilters.disposition);
+    }
+
+    if (currentFilters.orgName) {
+        params.append('org_name', currentFilters.orgName);
     }
 
     // Add any extra parameters
@@ -590,59 +694,75 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Export data to CSV
-async function exportToCSV() {
+// Export data (CSV or PDF)
+async function exportData(type) {
     try {
-        const queryString = buildQueryString({ page_size: 1000 });
-        const response = await fetch(`${API_BASE}/reports?${queryString}`);
-        const data = await response.json();
+        showNotification('Preparing export...', 'info');
 
-        if (data.reports.length === 0) {
-            showNotification('No data to export', 'error');
-            return;
+        // Build endpoint URL based on type
+        let endpoint;
+        let filename;
+        let contentType;
+
+        switch (type) {
+            case 'reports':
+                endpoint = '/api/export/reports/csv';
+                filename = `dmarc_reports_${new Date().toISOString().split('T')[0]}.csv`;
+                contentType = 'text/csv';
+                break;
+            case 'records':
+                endpoint = '/api/export/records/csv';
+                filename = `dmarc_records_${new Date().toISOString().split('T')[0]}.csv`;
+                contentType = 'text/csv';
+                break;
+            case 'sources':
+                endpoint = '/api/export/sources/csv';
+                filename = `dmarc_sources_${new Date().toISOString().split('T')[0]}.csv`;
+                contentType = 'text/csv';
+                break;
+            case 'pdf':
+                endpoint = '/api/export/report/pdf';
+                filename = `dmarc_summary_${new Date().toISOString().split('T')[0]}.pdf`;
+                contentType = 'application/pdf';
+                break;
+            default:
+                throw new Error('Invalid export type');
         }
 
-        // Build CSV
-        const headers = ['Date Begin', 'Date End', 'Organization', 'Domain', 'Report ID', 'Total Messages', 'Records', 'Policy', 'Received At'];
-        const rows = data.reports.map(r => [
-            r.date_begin,
-            r.date_end,
-            r.org_name,
-            r.domain,
-            r.report_id,
-            r.total_messages || 0,
-            r.record_count || 0,
-            r.policy_p || 'N/A',
-            r.received_at
-        ]);
+        // Build query string with current filters
+        const queryString = buildQueryString();
 
-        let csvContent = headers.join(',') + '\n';
-        rows.forEach(row => {
-            csvContent += row.map(cell => {
-                // Escape quotes and wrap in quotes if contains comma
-                const cellStr = String(cell);
-                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-                    return '"' + cellStr.replace(/"/g, '""') + '"';
-                }
-                return cellStr;
-            }).join(',') + '\n';
+        // Fetch from export endpoint with API key
+        const response = await fetch(`${API_BASE}${endpoint}?${queryString}`, {
+            method: 'GET',
+            headers: {
+                'X-API-Key': 'dev-api-key-12345'  // In production, this should come from user settings
+            }
         });
 
-        // Download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        if (!response.ok) {
+            throw new Error(`Export failed: ${response.statusText}`);
+        }
+
+        // Get the blob
+        const blob = await response.blob();
+
+        // Download the file
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
-        link.setAttribute('download', `dmarc_reports_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', filename);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
 
-        showNotification(`Exported ${data.reports.length} reports to CSV`, 'success');
+        const typeLabel = type === 'pdf' ? 'PDF report' : `${type} CSV`;
+        showNotification(`Successfully exported ${typeLabel}`, 'success');
     } catch (error) {
-        console.error('Error exporting CSV:', error);
-        showNotification('Error exporting data', 'error');
+        console.error('Error exporting data:', error);
+        showNotification(`Error exporting data: ${error.message}`, 'error');
     }
 }
 
@@ -1202,4 +1322,256 @@ function updateRecordsPagination(reportId, currentPage, pageSize, total) {
 
     paginationDiv.appendChild(controls);
     paginationDiv.style.display = 'block';
+}
+
+// Load alignment breakdown chart
+async function loadAlignmentChart() {
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
+    const data = await response.json();
+
+    const ctx = document.getElementById('alignmentChart').getContext('2d');
+
+    if (alignmentChart) {
+        alignmentChart.destroy();
+    }
+
+    const total = data.both_pass + data.dkim_only + data.spf_only + data.both_fail;
+
+    alignmentChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Authentication Alignment'],
+            datasets: [
+                {
+                    label: 'Both Pass',
+                    data: [data.both_pass],
+                    backgroundColor: '#27ae60'
+                },
+                {
+                    label: 'DKIM Only',
+                    data: [data.dkim_only],
+                    backgroundColor: '#3498db'
+                },
+                {
+                    label: 'SPF Only',
+                    data: [data.spf_only],
+                    backgroundColor: '#f39c12'
+                },
+                {
+                    label: 'Both Fail',
+                    data: [data.both_fail],
+                    backgroundColor: '#e74c3c'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const value = context.parsed.y;
+                            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.dataset.label}: ${value.toLocaleString()} (${pct}%)`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => value.toLocaleString()
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load compliance chart
+async function loadComplianceChart() {
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
+    const data = await response.json();
+
+    const ctx = document.getElementById('complianceChart').getContext('2d');
+
+    if (complianceChart) {
+        complianceChart.destroy();
+    }
+
+    const compliant = data.both_pass;
+    const nonCompliant = data.dkim_only + data.spf_only + data.both_fail;
+    const total = compliant + nonCompliant;
+
+    complianceChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Compliant (Both Pass)', 'Non-Compliant'],
+            datasets: [{
+                data: [compliant, nonCompliant],
+                backgroundColor: ['#27ae60', '#e74c3c']
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const value = context.parsed;
+                            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                            return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load failure trend chart
+async function loadFailureTrendChart() {
+    const queryString = buildQueryString();
+    const response = await fetch(`${API_BASE}/rollup/failure-trend?${queryString}`);
+    const data = await response.json();
+
+    const ctx = document.getElementById('failureTrendChart').getContext('2d');
+
+    if (failureTrendChart) {
+        failureTrendChart.destroy();
+    }
+
+    failureTrendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.trend.map(d => d.date),
+            datasets: [
+                {
+                    label: 'Failure Rate',
+                    data: data.trend.map(d => d.failure_rate),
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                },
+                {
+                    label: '7-Day Moving Average',
+                    data: data.trend.map(d => d.moving_average),
+                    borderColor: '#3498db',
+                    backgroundColor: 'transparent',
+                    borderDash: [5, 5],
+                    tension: 0.4,
+                    fill: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    position: 'top'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const dataPoint = data.trend[context.dataIndex];
+                            if (context.datasetIndex === 0) {
+                                return [
+                                    `Failure Rate: ${dataPoint.failure_rate.toFixed(1)}%`,
+                                    `Failed: ${dataPoint.failed_count.toLocaleString()}`,
+                                    `Total: ${dataPoint.total_count.toLocaleString()}`
+                                ];
+                            } else {
+                                return `Moving Avg: ${dataPoint.moving_average.toFixed(1)}%`;
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: (value) => `${value}%`
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Load top organizations chart
+async function loadTopOrganizationsChart() {
+    const queryString = buildQueryString({ limit: 10 });
+    const response = await fetch(`${API_BASE}/rollup/top-organizations?${queryString}`);
+    const data = await response.json();
+
+    const ctx = document.getElementById('topOrganizationsChart').getContext('2d');
+
+    if (topOrganizationsChart) {
+        topOrganizationsChart.destroy();
+    }
+
+    topOrganizationsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.organizations.map(d => d.org_name),
+            datasets: [{
+                label: 'Total Messages',
+                data: data.organizations.map(d => d.total_messages),
+                backgroundColor: '#3498db'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            indexAxis: 'y',
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: (context) => {
+                            const org = data.organizations[context.dataIndex];
+                            const passPct = org.total_messages > 0
+                                ? ((org.pass_count / org.total_messages) * 100).toFixed(1)
+                                : 0;
+                            return [
+                                `Total: ${org.total_messages.toLocaleString()}`,
+                                `Pass: ${org.pass_count.toLocaleString()}`,
+                                `Fail: ${org.fail_count.toLocaleString()}`,
+                                `Pass Rate: ${passPct}%`
+                            ];
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: (value) => value.toLocaleString()
+                    }
+                }
+            }
+        }
+    });
 }
