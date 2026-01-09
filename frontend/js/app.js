@@ -8,7 +8,7 @@ let alignmentChart, complianceChart, failureTrendChart, topOrganizationsChart;
 // Current filter state
 let currentFilters = {
     domain: '',
-    days: 30,
+    days: 365,  // Default to 365 days to capture more historical data
     startDate: null,
     endDate: null,
     sourceIp: '',
@@ -754,7 +754,17 @@ async function exportData(type) {
         });
 
         if (!response.ok) {
-            throw new Error(`Export failed: ${response.statusText}`);
+            // Try to get error message from JSON response
+            let errorMessage = `Export failed: ${response.statusText}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.detail) {
+                    errorMessage = errorData.detail;
+                }
+            } catch (e) {
+                // If JSON parsing fails, use default message
+            }
+            throw new Error(errorMessage);
         }
 
         // Get the blob
@@ -775,7 +785,11 @@ async function exportData(type) {
         showNotification(`Successfully exported ${typeLabel}`, 'success');
     } catch (error) {
         console.error('Error exporting data:', error);
-        showNotification(`Error exporting data: ${error.message}`, 'error');
+        // If the error message already contains context, show it directly
+        const errorMsg = error.message.includes('No reports found') || error.message.includes('No records found') || error.message.includes('No sources found')
+            ? error.message
+            : `Error exporting data: ${error.message}`;
+        showNotification(errorMsg, 'error');
     }
 }
 
