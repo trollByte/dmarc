@@ -207,6 +207,47 @@ async def list_reports(
     )
 
 
+@router.get("/api/reports/{report_id}", response_model=ReportDetail)
+async def get_report(
+    report_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get a single DMARC report by ID with full details
+    """
+    report = db.query(DmarcReport).filter(DmarcReport.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Count records and total messages
+    record_count = len(report.records)
+    total_messages = sum(r.count for r in report.records)
+
+    return ReportDetail(
+        id=report.id,
+        report_id=report.report_id,
+        org_name=report.org_name,
+        email=report.email,
+        domain=report.domain,
+        date_begin=report.date_begin,
+        date_end=report.date_end,
+        p=report.p,
+        sp=report.sp,
+        pct=report.pct,
+        created_at=report.created_at,
+        record_count=record_count,
+        total_messages=total_messages,
+        # Frontend compatibility fields
+        policy_p=report.p,
+        policy_sp=report.sp,
+        policy_pct=report.pct,
+        policy_adkim=report.adkim,
+        policy_aspf=report.aspf,
+        received_at=report.created_at
+    )
+
+
 @router.get("/api/reports/{report_id}/records", response_model=ReportRecordsResponse)
 async def get_report_records(
     report_id: int,

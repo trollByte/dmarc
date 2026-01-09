@@ -55,6 +55,13 @@ class ReportDetail(BaseModel):
     created_at: datetime
     record_count: int = 0
     total_messages: int = 0
+    # Frontend compatibility fields
+    policy_p: Optional[str] = None
+    policy_sp: Optional[str] = None
+    policy_pct: Optional[int] = None
+    policy_adkim: Optional[str] = None
+    policy_aspf: Optional[str] = None
+    received_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
