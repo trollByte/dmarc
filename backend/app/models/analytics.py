@@ -124,7 +124,7 @@ class MLPrediction(Base):
 
     # Additional context
     features = Column(JSONB, nullable=True)  # Features used for prediction
-    metadata = Column(JSONB, nullable=True)  # Additional context
+    prediction_metadata = Column(JSONB, nullable=True)  # Additional context
 
     # Timestamps
     predicted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

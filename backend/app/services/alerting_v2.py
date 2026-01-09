@@ -106,7 +106,7 @@ class EnhancedAlertService:
             domain=domain,
             current_value=current_value,
             threshold_value=threshold_value,
-            metadata=metadata or {},
+            alert_metadata=metadata or {},
             status=AlertStatus.CREATED,
             cooldown_until=datetime.utcnow() + timedelta(minutes=self._get_cooldown_minutes(alert_type))
         )
@@ -382,7 +382,7 @@ class EnhancedAlertService:
                     domain=domain,
                     current_value=metric_value,
                     threshold_value=threshold,
-                    metadata={"rule_id": str(rule.id), "rule_name": rule.name}
+                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
                 )
 
         elif rule.alert_type == AlertType.VOLUME_SPIKE:
@@ -400,7 +400,7 @@ class EnhancedAlertService:
                     domain=domain,
                     current_value=metric_value,
                     threshold_value=threshold,
-                    metadata={"rule_id": str(rule.id), "rule_name": rule.name}
+                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
                 )
 
         elif rule.alert_type == AlertType.VOLUME_DROP:
@@ -418,7 +418,7 @@ class EnhancedAlertService:
                     domain=domain,
                     current_value=metric_value,
                     threshold_value=-abs(threshold),
-                    metadata={"rule_id": str(rule.id), "rule_name": rule.name}
+                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
                 )
 
         return None
@@ -510,7 +510,7 @@ class EnhancedAlertService:
                     alert.message,
                     alert.severity.value,
                     alert.domain,
-                    metadata=alert.metadata
+                    metadata=alert.alert_metadata
                 )
                 if teams_sent:
                     channels.append("teams")

@@ -41,7 +41,7 @@ def upgrade() -> None:
         sa.Column('domain', sa.String(255), nullable=True, index=True),
         sa.Column('current_value', sa.Float(), nullable=True),
         sa.Column('threshold_value', sa.Float(), nullable=True),
-        sa.Column('metadata', JSONB, nullable=True),
+        sa.Column('alert_metadata', JSONB, nullable=True),
         sa.Column('status', sa.Enum('created', 'acknowledged', 'resolved', 'suppressed', name='alertstatus'), nullable=False, index=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, index=True),
         sa.Column('acknowledged_at', sa.DateTime(), nullable=True),

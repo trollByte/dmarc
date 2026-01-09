@@ -69,7 +69,7 @@ class AlertHistory(Base):
     threshold_value = Column(Float, nullable=True)
 
     # Additional context (JSON)
-    metadata = Column(JSONB, nullable=True)
+    alert_metadata = Column(JSONB, nullable=True)
 
     # Lifecycle tracking
     status = Column(SQLEnum(AlertStatus), nullable=False, default=AlertStatus.CREATED, index=True)
