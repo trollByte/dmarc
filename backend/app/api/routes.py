@@ -1579,3 +1579,253 @@ async def export_summary_pdf(
             'X-Content-Type-Options': 'nosniff'
         }
     )
+
+
+# ============================================================================
+# CELERY TASK MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@router.post("/api/tasks/ingest", dependencies=[Security(get_api_key)])
+@limiter.limit("10/minute")
+async def trigger_ingest_task(
+    request: Request,
+    limit: int = Query(50, ge=1, le=200, description="Max emails to process"),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger email ingestion task.
+
+    Dispatches a Celery task to fetch DMARC reports from IMAP inbox.
+
+    **Requires**: API key authentication
+    **Rate limit**: 10 requests per minute
+
+    Args:
+        limit: Maximum number of emails to check (1-200, default: 50)
+
+    Returns:
+        Task information with task_id for status tracking
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    # Check if Celery is enabled
+    if not settings.use_celery:
+        # Fall back to synchronous execution
+        from app.services.ingestion import IngestionService
+        service = IngestionService(db)
+        stats = service.ingest_from_inbox(limit=limit)
+        return {
+            "status": "completed_sync",
+            "message": "Executed synchronously (Celery not enabled)",
+            "stats": stats
+        }
+
+    # Dispatch Celery task
+    from app.tasks.ingestion import ingest_emails_task
+    task = ingest_emails_task.apply_async(kwargs={"limit": limit})
+
+    return {
+        "status": "dispatched",
+        "task_id": task.id,
+        "task_name": "ingest_emails_task",
+        "message": f"Email ingestion task dispatched (limit={limit})",
+        "monitor_url": f"/api/tasks/{task.id}/status"
+    }
+
+
+@router.post("/api/tasks/process", dependencies=[Security(get_api_key)])
+@limiter.limit("10/minute")
+async def trigger_process_task(
+    request: Request,
+    limit: int = Query(100, ge=1, le=1000, description="Max reports to process"),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger report processing task.
+
+    Dispatches a Celery task to process pending DMARC reports.
+
+    **Requires**: API key authentication
+    **Rate limit**: 10 requests per minute
+
+    Args:
+        limit: Maximum number of reports to process (1-1000, default: 100)
+
+    Returns:
+        Task information with task_id for status tracking
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+
+    # Check if Celery is enabled
+    if not settings.use_celery:
+        # Fall back to synchronous execution
+        from app.services.processing import ReportProcessor
+        processor = ReportProcessor(db, settings.raw_reports_path)
+        processed, failed = processor.process_pending_reports(limit=limit)
+        return {
+            "status": "completed_sync",
+            "message": "Executed synchronously (Celery not enabled)",
+            "stats": {
+                "processed": processed,
+                "failed": failed
+            }
+        }
+
+    # Dispatch Celery task
+    from app.tasks.processing import process_reports_task
+    task = process_reports_task.apply_async(kwargs={"limit": limit})
+
+    return {
+        "status": "dispatched",
+        "task_id": task.id,
+        "task_name": "process_reports_task",
+        "message": f"Report processing task dispatched (limit={limit})",
+        "monitor_url": f"/api/tasks/{task.id}/status"
+    }
+
+
+@router.get("/api/tasks/{task_id}/status")
+async def get_task_status(
+    task_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get Celery task status and result.
+
+    Query the status of a background task by its ID.
+
+    **States**:
+    - PENDING: Task waiting to be executed
+    - STARTED: Task has been started
+    - RETRY: Task is being retried
+    - FAILURE: Task failed
+    - SUCCESS: Task completed successfully
+
+    Args:
+        task_id: Celery task ID (returned from task dispatch)
+
+    Returns:
+        Task state, result, and metadata
+    """
+    from celery.result import AsyncResult
+    from app.celery_app import celery_app
+
+    # Query task result
+    task_result = AsyncResult(task_id, app=celery_app)
+
+    response = {
+        "task_id": task_id,
+        "status": task_result.state,
+        "current": task_result.info.get('current', 0) if isinstance(task_result.info, dict) else 0,
+        "total": task_result.info.get('total', 0) if isinstance(task_result.info, dict) else 0,
+    }
+
+    # Add result if completed
+    if task_result.state == 'SUCCESS':
+        response["result"] = task_result.result
+    elif task_result.state == 'FAILURE':
+        response["error"] = str(task_result.info)
+        response["traceback"] = task_result.traceback
+    elif task_result.state == 'PENDING':
+        response["message"] = "Task is queued or does not exist"
+    elif task_result.state == 'STARTED':
+        response["message"] = "Task is currently executing"
+
+    return response
+
+
+@router.get("/api/tasks/stats")
+async def get_task_stats(
+    days: int = Query(7, ge=1, le=90, description="Days of history"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get Celery task statistics.
+
+    Provides insights into task execution: success/failure rates, average duration, etc.
+
+    Args:
+        days: Number of days of history to query (1-90, default: 7)
+
+    Returns:
+        Task statistics dashboard data
+    """
+    from sqlalchemy import func, case
+    from datetime import timedelta
+
+    # Query celery_taskmeta table for statistics
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    try:
+        # Count by status
+        status_counts = db.execute(
+            """
+            SELECT status, COUNT(*) as count
+            FROM celery_taskmeta
+            WHERE date_done >= :cutoff OR date_done IS NULL
+            GROUP BY status
+            """,
+            {"cutoff": cutoff}
+        ).fetchall()
+
+        # Count by task name
+        task_counts = db.execute(
+            """
+            SELECT name, status, COUNT(*) as count
+            FROM celery_taskmeta
+            WHERE date_done >= :cutoff OR date_done IS NULL
+            GROUP BY name, status
+            ORDER BY name, status
+            """,
+            {"cutoff": cutoff}
+        ).fetchall()
+
+        # Calculate averages for successful tasks
+        task_durations = db.execute(
+            """
+            SELECT name,
+                   AVG(EXTRACT(EPOCH FROM (date_done - date_done))) as avg_duration_seconds,
+                   COUNT(*) as count
+            FROM celery_taskmeta
+            WHERE status = 'SUCCESS' AND date_done >= :cutoff
+            GROUP BY name
+            """,
+            {"cutoff": cutoff}
+        ).fetchall()
+
+        # Format response
+        stats_by_status = {row[0]: row[1] for row in status_counts}
+        stats_by_task = {}
+
+        for row in task_counts:
+            task_name = row[0] or 'unknown'
+            if task_name not in stats_by_task:
+                stats_by_task[task_name] = {}
+            stats_by_task[task_name][row[1]] = row[2]
+
+        return {
+            "period_days": days,
+            "total_tasks": sum(stats_by_status.values()),
+            "by_status": stats_by_status,
+            "by_task": stats_by_task,
+            "success_rate": round(
+                (stats_by_status.get('SUCCESS', 0) / sum(stats_by_status.values()) * 100)
+                if sum(stats_by_status.values()) > 0 else 0,
+                2
+            )
+        }
+
+    except Exception as e:
+        # If celery_taskmeta table doesn't exist yet, return empty stats
+        return {
+            "period_days": days,
+            "total_tasks": 0,
+            "by_status": {},
+            "by_task": {},
+            "success_rate": 0,
+            "message": "Task tracking table not initialized yet (run migration 004)"
+        }
