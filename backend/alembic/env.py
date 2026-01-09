@@ -13,7 +13,8 @@ from app.database import Base
 from app.models import (
     IngestedReport, DmarcReport, DmarcRecord,
     User, UserAPIKey, RefreshToken,
-    AlertHistory, AlertRule, AlertSuppression
+    AlertHistory, AlertRule, AlertSuppression,
+    GeoLocationCache, MLModel, MLPrediction, AnalyticsCache
 )
 
 # this is the Alembic Config object

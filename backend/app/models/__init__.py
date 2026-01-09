@@ -16,6 +16,11 @@ from app.models.alert import (
     AlertSeverity, AlertType, AlertStatus
 )
 
+# Analytics models
+from app.models.analytics import (
+    GeoLocationCache, MLModel, MLPrediction, AnalyticsCache
+)
+
 __all__ = [
     # DMARC models
     "IngestedReport",
@@ -33,4 +38,9 @@ __all__ = [
     "AlertSeverity",
     "AlertType",
     "AlertStatus",
+    # Analytics models
+    "GeoLocationCache",
+    "MLModel",
+    "MLPrediction",
+    "AnalyticsCache",
 ]

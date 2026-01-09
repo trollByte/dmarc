@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.tasks.ingestion",
         "app.tasks.processing",
         "app.tasks.alerting",
+        "app.tasks.ml_tasks",
     ]
 )
 
@@ -55,6 +56,26 @@ celery_app.conf.beat_schedule = {
     "check-alerts-hourly": {
         "task": "app.tasks.alerting.check_alerts_task",
         "schedule": crontab(minute=0),  # Every hour on the hour
+    },
+    # ML: Train anomaly detection model weekly (Sunday 2 AM)
+    "train-anomaly-model-weekly": {
+        "task": "app.tasks.ml_tasks.train_anomaly_model_task",
+        "schedule": crontab(day_of_week=0, hour=2, minute=0),  # Sunday 2 AM
+    },
+    # ML: Detect anomalies daily (3 AM)
+    "detect-anomalies-daily": {
+        "task": "app.tasks.ml_tasks.detect_anomalies_task",
+        "schedule": crontab(hour=3, minute=0),  # Daily 3 AM
+    },
+    # ML: Purge geolocation cache weekly (Monday 1 AM)
+    "purge-geolocation-cache-weekly": {
+        "task": "app.tasks.ml_tasks.purge_geolocation_cache_task",
+        "schedule": crontab(day_of_week=1, hour=1, minute=0),  # Monday 1 AM
+    },
+    # ML: Generate analytics cache daily (4 AM)
+    "generate-analytics-cache-daily": {
+        "task": "app.tasks.ml_tasks.generate_analytics_cache_task",
+        "schedule": crontab(hour=4, minute=0),  # Daily 4 AM
     },
 }
 
