@@ -12,7 +12,8 @@ from app.database import Base
 # Import all models for Alembic to track
 from app.models import (
     IngestedReport, DmarcReport, DmarcRecord,
-    User, UserAPIKey, RefreshToken
+    User, UserAPIKey, RefreshToken,
+    AlertHistory, AlertRule, AlertSuppression
 )
 
 # this is the Alembic Config object

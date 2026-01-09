@@ -357,3 +357,194 @@ class NotificationService:
         response.raise_for_status()
 
         logger.info("Sent webhook alert")
+
+    # ==================== Single Alert Methods (Phase 3) ====================
+
+    def send_teams_alert(
+        self,
+        title: str,
+        message: str,
+        severity: str,
+        domain: Optional[str] = None,
+        metadata: Optional[dict] = None
+    ) -> bool:
+        """
+        Send single alert to Microsoft Teams (PRIORITY CHANNEL).
+
+        Args:
+            title: Alert title
+            message: Alert message
+            severity: Severity level (critical, warning, info)
+            domain: Domain (optional)
+            metadata: Additional metadata (optional)
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self._is_teams_configured():
+            return False
+
+        try:
+            webhook_url = getattr(self.settings, 'teams_webhook_url')
+            color_map = {'critical': 'FF0000', 'warning': 'FFA500', 'info': '0078D4'}
+
+            facts = []
+            if domain:
+                facts.append({"name": "Domain", "value": domain})
+
+            if metadata:
+                for key, value in list(metadata.items())[:8]:
+                    facts.append({
+                        "name": key.replace('_', ' ').title(),
+                        "value": str(value)
+                    })
+
+            payload = {
+                "@type": "MessageCard",
+                "@context": "https://schema.org/extensions",
+                "summary": title,
+                "themeColor": color_map.get(severity, '0078D4'),
+                "sections": [{
+                    "activityTitle": f"🔔 {title}",
+                    "activitySubtitle": message,
+                    "facts": facts,
+                    "markdown": True
+                }]
+            }
+
+            response = requests.post(webhook_url, json=payload, timeout=10)
+            response.raise_for_status()
+
+            logger.info(f"Sent Teams alert: {title}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send Teams alert: {e}", exc_info=True)
+            return False
+
+    def send_email_alert(
+        self,
+        title: str,
+        message: str,
+        severity: str,
+        domain: Optional[str] = None
+    ) -> bool:
+        """
+        Send single alert via email.
+
+        Args:
+            title: Alert title
+            message: Alert message
+            severity: Severity level
+            domain: Domain (optional)
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self._is_email_configured():
+            return False
+
+        try:
+            smtp_host = getattr(self.settings, 'smtp_host')
+            smtp_port = getattr(self.settings, 'smtp_port', 587)
+            smtp_user = getattr(self.settings, 'smtp_user', None)
+            smtp_password = getattr(self.settings, 'smtp_password', None)
+            smtp_from = getattr(self.settings, 'smtp_from')
+            alert_email_to = getattr(self.settings, 'alert_email_to')
+            smtp_use_tls = getattr(self.settings, 'smtp_use_tls', True)
+
+            subject = f"DMARC Alert [{severity.upper()}]: {title}"
+
+            severity_color = {
+                'critical': '#e74c3c',
+                'warning': '#f39c12',
+                'info': '#3498db'
+            }
+
+            body = f"""
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; }}
+                    .alert {{ margin: 15px; padding: 20px; border-left: 4px solid {severity_color.get(severity, '#3498db')}; }}
+                    .title {{ font-weight: bold; font-size: 18px; margin-bottom: 10px; }}
+                    .message {{ margin: 10px 0; font-size: 14px; }}
+                    .domain {{ color: #666; margin-top: 10px; }}
+                </style>
+            </head>
+            <body>
+                <div class="alert">
+                    <div class="title">{title}</div>
+                    <div class="message">{message}</div>
+                    {f'<div class="domain">Domain: {domain}</div>' if domain else ''}
+                </div>
+            </body>
+            </html>
+            """
+
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = smtp_from
+            msg['To'] = alert_email_to
+            msg['Date'] = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S +0000')
+            msg.attach(MIMEText(body, 'html'))
+
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                if smtp_use_tls:
+                    server.starttls()
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+
+            logger.info(f"Sent email alert to {alert_email_to}: {title}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send email alert: {e}", exc_info=True)
+            return False
+
+    def send_slack_alert(
+        self,
+        title: str,
+        message: str,
+        severity: str
+    ) -> bool:
+        """
+        Send single alert to Slack.
+
+        Args:
+            title: Alert title
+            message: Alert message
+            severity: Severity level
+
+        Returns:
+            True if sent successfully, False otherwise
+        """
+        if not self._is_slack_configured():
+            return False
+
+        try:
+            webhook_url = getattr(self.settings, 'slack_webhook_url')
+            emoji = {'critical': '🔴', 'warning': '⚠️', 'info': 'ℹ️'}
+
+            payload = {
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*{emoji.get(severity, 'ℹ️')} {title}*\n{message}"
+                        }
+                    }
+                ]
+            }
+
+            response = requests.post(webhook_url, json=payload, timeout=10)
+            response.raise_for_status()
+
+            logger.info(f"Sent Slack alert: {title}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send Slack alert: {e}", exc_info=True)
+            return False

@@ -10,6 +10,12 @@ from app.models.dmarc import IngestedReport, DmarcReport, DmarcRecord
 # User authentication models
 from app.models.user import User, UserAPIKey, RefreshToken, UserRole
 
+# Alert models
+from app.models.alert import (
+    AlertHistory, AlertRule, AlertSuppression,
+    AlertSeverity, AlertType, AlertStatus
+)
+
 __all__ = [
     # DMARC models
     "IngestedReport",
@@ -20,4 +26,11 @@ __all__ = [
     "UserAPIKey",
     "RefreshToken",
     "UserRole",
+    # Alert models
+    "AlertHistory",
+    "AlertRule",
+    "AlertSuppression",
+    "AlertSeverity",
+    "AlertType",
+    "AlertStatus",
 ]
