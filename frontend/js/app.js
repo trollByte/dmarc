@@ -1320,8 +1320,19 @@ function createAuthBadge(result, type = 'generic') {
     return wrapper;
 }
 
+// Explanation text for dispositions
+const DISPOSITION_EXPLANATIONS = {
+    none: 'None: The email was delivered normally to the inbox. The DMARC policy is in monitoring mode (p=none), collecting data without taking action on failed authentication.',
+    quarantine: 'Quarantine: The email was sent to the spam/junk folder. This happens when DMARC authentication fails and the domain policy is set to quarantine (p=quarantine).',
+    reject: 'Reject: The email was blocked and not delivered. This is the strictest DMARC policy (p=reject), used when authentication fails and the domain wants maximum protection.'
+};
+
 // Create disposition badge (returns DOM element)
 function createDispositionBadge(disposition) {
+    // Create wrapper for tooltip positioning
+    const wrapper = document.createElement('span');
+    wrapper.className = 'badge-wrapper';
+
     const span = document.createElement('span');
     span.className = 'badge';
 
@@ -1333,8 +1344,20 @@ function createDispositionBadge(disposition) {
 
     span.className += ' ' + (colorMap[disposition] || 'badge-gray');
     span.textContent = (disposition || 'N/A').toUpperCase();
+    span.style.cursor = 'help';
 
-    return span;
+    // Get explanation for disposition
+    const explanation = disposition && DISPOSITION_EXPLANATIONS[disposition.toLowerCase()]
+        ? DISPOSITION_EXPLANATIONS[disposition.toLowerCase()]
+        : 'Disposition: The action taken by the receiving mail server based on DMARC policy and authentication results.';
+
+    // Add custom tooltip on hover
+    span.addEventListener('mouseenter', (e) => showTooltip(e, explanation));
+    span.addEventListener('mouseleave', hideTooltip);
+    span.addEventListener('mousemove', updateTooltipPosition);
+
+    wrapper.appendChild(span);
+    return wrapper;
 }
 
 // Get row class based on alignment

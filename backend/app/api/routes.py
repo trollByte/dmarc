@@ -1338,7 +1338,7 @@ async def export_reports_csv(
     db: Session = Depends(get_db),
     api_key: str = Security(get_api_key),
     domain: Optional[str] = Query(None),
-    days: Optional[int] = Query(30),
+    days: Optional[int] = Query(365),  # Changed from 30 to 365 for production
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     org_name: Optional[str] = Query(None)
@@ -1369,6 +1369,14 @@ async def export_reports_csv(
         org_name=org_name
     )
 
+    # Check if export is empty (only headers)
+    lines = csv_content.strip().split('\n')
+    if len(lines) <= 1:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No reports found for the specified filters. Try adjusting your date range or filters."
+        )
+
     # Create filename with timestamp
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     filename = f"dmarc_reports_{timestamp}.csv"
@@ -1391,7 +1399,7 @@ async def export_records_csv(
     db: Session = Depends(get_db),
     api_key: str = Security(get_api_key),
     domain: Optional[str] = Query(None),
-    days: Optional[int] = Query(30),
+    days: Optional[int] = Query(365),  # Changed from 30 to 365 for production
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     source_ip: Optional[str] = Query(None),
@@ -1433,6 +1441,14 @@ async def export_records_csv(
         limit=limit
     )
 
+    # Check if export is empty (only headers)
+    lines = csv_content.strip().split('\n')
+    if len(lines) <= 1:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No records found for the specified filters. Try adjusting your date range or filters."
+        )
+
     # Create filename with timestamp
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     filename = f"dmarc_records_{timestamp}.csv"
@@ -1455,7 +1471,7 @@ async def export_sources_csv(
     db: Session = Depends(get_db),
     api_key: str = Security(get_api_key),
     domain: Optional[str] = Query(None),
-    days: Optional[int] = Query(30),
+    days: Optional[int] = Query(365),  # Changed from 30 to 365 for production
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     org_name: Optional[str] = Query(None),
@@ -1489,6 +1505,14 @@ async def export_sources_csv(
         limit=limit
     )
 
+    # Check if export is empty (only headers)
+    lines = csv_content.strip().split('\n')
+    if len(lines) <= 1:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No source IPs found for the specified filters. Try adjusting your date range or filters."
+        )
+
     # Create filename with timestamp
     timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
     filename = f"dmarc_sources_{timestamp}.csv"
@@ -1511,7 +1535,7 @@ async def export_summary_pdf(
     db: Session = Depends(get_db),
     api_key: str = Security(get_api_key),
     domain: Optional[str] = Query(None),
-    days: Optional[int] = Query(30),
+    days: Optional[int] = Query(365),  # Changed from 30 to 365 for production
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None)
 ):
