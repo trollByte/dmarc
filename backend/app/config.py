@@ -41,9 +41,26 @@ class Settings(BaseSettings):
     celery_worker_prefetch_multiplier: int = 4
     use_celery: bool = False  # Set to True to use Celery instead of APScheduler
 
-    # Authentication
+    # Authentication (Legacy API Keys)
     require_api_key: bool = False  # Set to True in production
     api_keys: list[str] = []  # List of valid API keys (set via API_KEYS env var comma-separated)
+
+    # JWT Authentication
+    jwt_secret_key: str = ""  # REQUIRED: Generate with: python -c "import secrets; print(secrets.token_urlsafe(64))"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 15  # Access token expires in 15 minutes
+    jwt_refresh_token_expire_days: int = 7  # Refresh token expires in 7 days
+
+    # Password Policy
+    password_min_length: int = 12
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_special: bool = True
+
+    # Account Security
+    max_failed_login_attempts: int = 5
+    account_lockout_duration_minutes: int = 30
 
     # Alerting - Thresholds
     alert_failure_warning: float = 10.0  # Warning if failure rate > 10%

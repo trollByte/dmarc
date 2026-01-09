@@ -8,6 +8,8 @@ from contextlib import asynccontextmanager
 from app.config import get_settings
 from app.database import get_db, check_db_connection
 from app.api.routes import router as api_router
+from app.api.auth_routes import router as auth_router
+from app.api.user_routes import router as user_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
 from app.error_handlers import register_error_handlers
@@ -73,8 +75,10 @@ register_error_handlers(app)
 if settings.enable_request_logging:
     app.middleware("http")(log_requests_middleware)
 
-# Include API router
+# Include API routers
 app.include_router(api_router)
+app.include_router(auth_router)
+app.include_router(user_router)
 
 
 @app.get("/")

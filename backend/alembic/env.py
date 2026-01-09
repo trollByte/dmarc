@@ -9,7 +9,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.database import Base
-from app.models import IngestedReport
+# Import all models for Alembic to track
+from app.models import (
+    IngestedReport, DmarcReport, DmarcRecord,
+    User, UserAPIKey, RefreshToken
+)
 
 # this is the Alembic Config object
 config = context.config
