@@ -1,377 +1,377 @@
 # DMARC Aggregate Report Processor
+## Enterprise-Grade DMARC Analytics Platform
 
-A production-ready MVP that ingests DMARC aggregate reports (RUA) from an email inbox, parses them, stores normalized results, and serves a dashboard with API.
+A production-ready enterprise platform that ingests, processes, and analyzes DMARC aggregate reports with advanced ML-powered threat detection, distributed task processing, and comprehensive security features.
 
-## Features
+---
+
+## 🚀 Features
 
 ### Core Functionality
-- 📧 Automated DMARC report ingestion from IMAP inbox
-- 📤 Bulk file upload (50-200 reports via drag-and-drop)
-- 🔄 Idempotent processing (avoids duplicates)
-- 💾 PostgreSQL storage for parsed reports
-- 🔒 API key authentication & rate limiting
-- 🚀 RESTful API with FastAPI
-- ✅ Comprehensive test coverage (70%+ enforced)
-- 🐳 Single-command deployment with Docker Compose
-- 🔔 Multi-channel alerting (Email, Slack, Discord, Teams)
+- 📧 **Automated DMARC Report Ingestion** - IMAP inbox monitoring with Celery task queue
+- 📤 **Bulk File Upload** - Drag-and-drop 50-200 reports simultaneously
+- 🔄 **Idempotent Processing** - SHA256-based duplicate prevention
+- 💾 **PostgreSQL Storage** - Production-grade relational database
+- 🔐 **JWT Authentication** - Role-based access control (Admin/Analyst/Viewer)
+- 🚀 **RESTful API** - FastAPI with auto-generated documentation
+- ✅ **Comprehensive Testing** - 70%+ code coverage enforced
+- 🐳 **Docker Deployment** - Single-command orchestration
+- 🔔 **Multi-Channel Alerting** - Email, Slack, Discord, Microsoft Teams
+
+### 🎯 Enterprise Features (NEW)
+
+#### Phase 1: Distributed Task Processing
+- ⚡ **Celery + Redis Queue** - Asynchronous background job processing
+- 📅 **Celery Beat Scheduler** - Automated periodic tasks
+  - Email ingestion every 15 minutes
+  - Report processing every 5 minutes
+  - Alert checks hourly
+  - ML model training weekly
+- 🌸 **Flower Dashboard** - Real-time task monitoring at `:5555`
+- 🔄 **Retry Logic** - Exponential backoff with 3 attempts
+- 📊 **Task Tracking** - PostgreSQL result backend
+
+#### Phase 2: Authentication & Authorization
+- 🔑 **JWT Authentication** - Access tokens (15min) + refresh tokens (7 days)
+- 👥 **Role-Based Access Control** - Admin, Analyst, Viewer roles
+- 🔐 **API Key Management** - Per-user API keys with SHA256 hashing
+- 🛡️ **Password Security** - bcrypt hashing (12 rounds)
+- 📝 **User Management** - Admin-only user creation (no self-registration)
+- 🔄 **Token Refresh** - Seamless token renewal
+- 📋 **Audit Trail** - User action tracking
+
+#### Phase 3: Enhanced Alerting
+- 🎯 **Alert Lifecycle** - Created → Acknowledged → Resolved
+- 🔕 **Deduplication** - SHA256 fingerprinting with cooldown periods
+- ⏰ **Alert Suppressions** - Time-based muting for maintenance windows
+- 📊 **Alert History** - Persistent storage with full lifecycle tracking
+- 📏 **Configurable Rules** - UI-based threshold management
+- 🔔 **Teams Priority** - Microsoft Teams notifications sent first
+- 📈 **Alert Analytics** - Trends, resolution times, acknowledgment rates
+
+#### Phase 4: ML Analytics & Geolocation
+- 🤖 **Anomaly Detection** - Isolation Forest ML model for suspicious IPs
+- 🌍 **IP Geolocation** - MaxMind GeoLite2 offline mapping
+- 🗺️ **Country Heatmaps** - Geographic visualization of email sources
+- 📊 **Model Management** - Training, versioning, deployment
+- 🔄 **Automated Training** - Weekly ML model updates (Sunday 2 AM)
+- 🎯 **Daily Detection** - Automatic anomaly scanning (3 AM)
+- 💾 **90-Day Caching** - Efficient geolocation data caching
+- 📈 **Prediction History** - ML prediction tracking and analytics
 
 ### Performance & Caching
-- ⚡ Redis caching with 90%+ hit rate
-- 🔧 Optimized database queries (N+1 query elimination)
-- 📈 Sub-200ms API response times with caching
-- 🔄 Automatic cache invalidation on new data
+- ⚡ **Redis Caching** - 90%+ hit rate, sub-200ms response times
+- 🔧 **Query Optimization** - N+1 query elimination, indexed lookups
+- 📈 **Auto-Invalidation** - Cache clearing on new data
+- 🔄 **Connection Pooling** - Optimized database and cache connections
 
 ### Visualizations
-- 📊 Interactive dashboard with 8 chart types:
+- 📊 **8 Interactive Charts**:
   - DMARC results timeline (line chart)
   - Results by domain (bar chart)
   - Top source IPs (bar chart)
   - Disposition breakdown (pie chart)
-  - **SPF/DKIM alignment breakdown (stacked bar)**
-  - **Policy compliance (doughnut chart)**
-  - **Failure rate trend with moving average (line chart)**
-  - **Top sending organizations (horizontal bar)**
+  - SPF/DKIM alignment breakdown (stacked bar)
+  - Policy compliance (doughnut chart)
+  - Failure rate trend with moving average (line chart)
+  - Top sending organizations (horizontal bar)
 
 ### Advanced Filtering
-- 🔍 Filter by source IP (exact match or CIDR ranges)
-- 🔐 Filter by authentication results (DKIM/SPF pass/fail)
-- 📋 Filter by disposition (none/quarantine/reject)
-- 🏢 Filter by sending organization
-- 📅 Date range filtering (custom or preset)
-- 🌐 Domain filtering
+- 🔍 **Source IP** - Exact match or CIDR ranges
+- 🔐 **Authentication** - DKIM/SPF pass/fail
+- 📋 **Disposition** - None/Quarantine/Reject
+- 🏢 **Organization** - Sending organization filter
+- 📅 **Date Range** - Custom or preset ranges
+- 🌐 **Domain** - Multi-domain filtering
 
 ### Export Capabilities
-- 📄 **CSV exports** (reports, records, sources)
-- 📑 **PDF summary reports** with charts and tables
-- 🔒 Rate-limited export endpoints (10/min CSV, 5/min PDF)
-- 🛡️ CSV formula injection prevention
-- 📊 Exports respect all active filters
+- 📄 **CSV Exports** - Reports, records, sources
+- 📑 **PDF Reports** - Professional summary with charts
+- 🔒 **Rate Limiting** - 10/min CSV, 5/min PDF
+- 🛡️ **Security** - CSV formula injection prevention
 
-## Tech Stack
+---
 
-- **Backend**: Python 3.11 + FastAPI
-- **Database**: PostgreSQL 15
+## 🛠️ Tech Stack
+
+### Backend
+- **Framework**: Python 3.11 + FastAPI
+- **Task Queue**: Celery + Redis
+- **ML/Analytics**: scikit-learn, NumPy, pandas
+- **Geolocation**: MaxMind GeoLite2 + geoip2
+- **Auth**: JWT (PyJWT), bcrypt
+- **Database**: PostgreSQL 15 + SQLAlchemy 2.0
 - **Cache**: Redis 7 (Alpine)
-- **Frontend**: Vanilla HTML/JS + Chart.js v4.4.0
-- **Web Server**: Nginx
-- **PDF Generation**: ReportLab
+- **PDF**: ReportLab
+
+### Frontend
+- **Stack**: Vanilla HTML/CSS/JS + Chart.js v4.4.0
+- **Charts**: Chart.js for visualizations
+- **Web Server**: Nginx (reverse proxy)
+
+### Infrastructure
 - **Orchestration**: Docker Compose
+- **Services**: Backend, Celery Worker, Celery Beat, PostgreSQL, Redis, Nginx, Flower
+- **Monitoring**: Flower dashboard for Celery tasks
 
-## Quick Start
+---
 
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd dmarc
-   ```
+## 📋 Prerequisites
 
-2. **Configure environment**
-   ```bash
-   cp .env.sample .env
-   # Edit .env with your email credentials
-   ```
+### Required
+- Docker & Docker Compose
+- MaxMind GeoLite2 database (free account)
 
-3. **Start the application**
-   ```bash
-   docker compose up -d
-   ```
+### Optional
+- Email account with IMAP access (for automated ingestion)
+- Microsoft Teams/Slack webhooks (for alerts)
 
-4. **Run database migrations** (required for first-time setup)
-   ```bash
-   docker compose exec backend alembic upgrade head
-   ```
+---
 
-   This creates all necessary database tables and indexes. You should see:
-   ```
-   INFO  [alembic.runtime.migration] Running upgrade -> 001
-   INFO  [alembic.runtime.migration] Running upgrade 001 -> 002
-   INFO  [alembic.runtime.migration] Running upgrade 002 -> 003
-   ```
+## 🚀 Quick Start
 
-5. **Access the application**
-   - Dashboard: http://localhost
-   - API Documentation: http://localhost:8000/docs
-   - Health Check: http://localhost/health
+### 1. Clone Repository
+```bash
+git clone <repo-url>
+cd dmarc
+```
 
-## Configuration
+### 2. Download MaxMind Database
+1. Sign up at: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
+2. Download **GeoLite2-City.mmdb**
+3. Place at: `backend/data/GeoLite2-City.mmdb`
 
-Edit `.env` file with your settings:
+```bash
+mkdir -p backend/data
+# Copy GeoLite2-City.mmdb to backend/data/
+```
 
+### 3. Configure Environment
+```bash
+cp .env.sample .env
+# Edit .env with your settings
+```
+
+**Required Settings**:
 ```env
-# Email IMAP Configuration
+# JWT Secret (generate with: python -c "import secrets; print(secrets.token_urlsafe(64))")
+JWT_SECRET_KEY=your-secret-key-here
+
+# Celery + Redis
+USE_CELERY=true
+CELERY_BROKER_URL=redis://redis:6379/0
+
+# Database
+DATABASE_URL=postgresql://dmarc:dmarc@db:5432/dmarc
+
+# Email (optional - for automated ingestion)
 EMAIL_HOST=imap.gmail.com
 EMAIL_PORT=993
 EMAIL_USER=your-email@example.com
 EMAIL_PASSWORD=your-app-password
-EMAIL_FOLDER=INBOX
 
-# Database (default works with docker-compose)
-DATABASE_URL=postgresql://dmarc:dmarc@db:5432/dmarc
-
-# Redis Cache (default works with docker-compose)
-REDIS_URL=redis://redis:6379/0
-CACHE_ENABLED=true
-CACHE_DEFAULT_TTL=300
+# Alerts (optional)
+TEAMS_WEBHOOK_URL=https://your-teams-webhook
 ```
 
-**Note**: For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833).
-
-## API Endpoints
-
-### Core Endpoints
-- `GET /api/domains` - List all domains with report counts
-- `GET /api/reports` - List all reports with pagination
-- `GET /api/reports/{id}` - Get detailed report information
-
-### Rollup & Analytics
-- `GET /api/rollup/summary` - Aggregate summary statistics
-- `GET /api/rollup/sources` - Top source IPs analysis
-- `GET /api/rollup/alignment` - DKIM/SPF alignment statistics
-- `GET /api/rollup/timeline` - Time-series data for trend charts
-- `GET /api/rollup/alignment-breakdown` - Authentication alignment breakdown (both pass, DKIM only, SPF only, both fail)
-- `GET /api/rollup/failure-trend` - Daily failure rates with moving average
-- `GET /api/rollup/top-organizations` - Top sending organizations by volume
-
-### Export Endpoints
-- `GET /api/export/reports/csv` - Export reports to CSV (requires API key, rate: 10/min)
-- `GET /api/export/records/csv` - Export detailed records to CSV (requires API key, rate: 10/min, max 10K records)
-- `GET /api/export/sources/csv` - Export source IP statistics to CSV (requires API key, rate: 10/min)
-- `GET /api/export/report/pdf` - Generate comprehensive PDF summary report (requires API key, rate: 5/min)
-
-### Upload & Triggers
-- `POST /api/upload` - Bulk upload DMARC report files (requires API key)
-- `POST /api/trigger/email-ingestion` - Manually trigger email ingestion (requires API key)
-- `POST /api/trigger/process-reports` - Process pending reports (requires API key)
-
-### Utilities
-- `GET /health` - Health check endpoint
-- `GET /docs` - Interactive API documentation (Swagger UI)
-- `GET /redoc` - Alternative API documentation (ReDoc)
-
-**Note**: Protected endpoints require `X-API-Key` header. All endpoints support advanced filtering via query parameters (domain, date ranges, source IP, CIDR ranges, DKIM/SPF results, disposition, organization).
-
-## Performance Optimizations
-
-The system includes several performance optimizations for handling large datasets:
-
-### Redis Caching
-- **Cache hit rate**: 90%+ after warmup
-- **TTL**: 5 minutes (configurable)
-- **Strategy**: Pattern-based key generation with automatic invalidation
-- **Graceful degradation**: System continues working if Redis is unavailable
-- **Memory limit**: 256MB with LRU eviction policy
-
-### Query Optimization
-- **N+1 query elimination**: Timeline and alerting endpoints optimized
-- **Aggregation queries**: Single JOIN queries replace iterative record loops
-- **Expected performance**:
-  - Timeline endpoint: ~800ms → <200ms
-  - Alerting checks: ~1200ms → <300ms
-  - Dashboard load: <1s with active cache
-
-### Cache Invalidation
-Automatic cache clearing on:
-- New report uploads
-- Report processing completion
-- Data modifications
-
-## Advanced Filtering
-
-The dashboard and API support comprehensive filtering options:
-
-### Filter Types
-1. **Source IP Filtering**
-   - Exact IP match: `?source_ip=192.168.1.100`
-   - CIDR range: `?source_ip_range=192.168.1.0/24`
-
-2. **Authentication Filters**
-   - DKIM result: `?dkim_result=pass` or `fail`
-   - SPF result: `?spf_result=pass` or `fail`
-
-3. **Disposition Filter**
-   - `?disposition=none|quarantine|reject`
-
-4. **Organization Filter**
-   - Case-insensitive search: `?org_name=google.com`
-
-5. **Date Range Filters**
-   - Preset ranges: `?days=7` (last 7 days)
-   - Custom range: `?start=2024-01-01T00:00:00&end=2024-12-31T23:59:59`
-
-6. **Domain Filter**
-   - `?domain=example.com`
-
-### Filter Combinations
-All filters can be combined for precise queries:
+### 4. Start Services
 ```bash
-# Example: Gmail IPs with failed SPF in last 30 days
-GET /api/rollup/summary?org_name=google.com&spf_result=fail&days=30
-
-# Example: Specific IP range with quarantine disposition
-GET /api/rollup/sources?source_ip_range=10.0.0.0/8&disposition=quarantine
+docker compose up -d --build
 ```
 
-## Export Features
+**Services**:
+- `backend` - FastAPI application (port 8000)
+- `celery-worker` - Background task processor
+- `celery-beat` - Scheduled task scheduler
+- `flower` - Celery monitoring UI (port 5555)
+- `db` - PostgreSQL database
+- `redis` - Cache & message broker
+- `nginx` - Web server (port 80)
 
-### CSV Exports
-Three export types available:
-- **Reports CSV**: Aggregated report metadata (report ID, org, domain, dates, message counts)
-- **Records CSV**: Detailed record-level data (max 10,000 records per export)
-- **Sources CSV**: Aggregated source IP statistics (total messages, pass/fail counts, percentages)
-
-**Security**: CSV formula injection prevention (special characters prefixed with `'`)
-
-### PDF Reports
-Comprehensive summary reports including:
-- Executive summary table (total reports, messages, pass/fail rates)
-- Policy compliance pie chart (compliant vs non-compliant)
-- Authentication alignment breakdown table
-- Top source IPs table (top 10 by volume)
-- Professional styling with ReportLab
-
-**Features**:
-- Respects all active filters
-- Includes metadata (domain, date range, generation timestamp)
-- Rate-limited to prevent abuse (5 requests/minute)
-
-### Export Usage
+### 5. Run Database Migrations
 ```bash
-# Export reports to CSV
-curl -H "X-API-Key: your-key" "http://localhost:8000/api/export/reports/csv?days=30" -o reports.csv
-
-# Generate PDF summary for specific domain
-curl -H "X-API-Key: your-key" "http://localhost:8000/api/export/report/pdf?domain=example.com&days=90" -o summary.pdf
+docker compose exec backend alembic upgrade head
 ```
 
-## Testing
+**Migrations Applied**:
+- `001` - Ingested reports table
+- `002` - DMARC reports & records tables
+- `003` - Performance indexes
+- `004` - Celery task tracking
+- `005` - User authentication
+- `006` - Enhanced alerting
+- `007` - ML analytics & geolocation
 
-The project includes comprehensive test coverage (70%+ enforced) with unit and integration tests.
+### 6. Create Admin User
+```bash
+docker compose exec backend python scripts/create_admin_user.py
+```
 
-### Quick Test Commands
+Follow the prompts to create your first admin user.
+
+### 7. Access the Platform
+- **Dashboard**: http://localhost
+- **API Docs**: http://localhost:8000/docs
+- **Flower (Tasks)**: http://localhost:5555
+- **Health Check**: http://localhost/health
+
+### 8. Login
+Use the admin credentials you created to login via the dashboard or API.
+
+---
+
+## 🔐 Authentication
+
+### Login (Get JWT Token)
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "your-password"
+  }'
+```
+
+**Response**:
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "token_type": "bearer"
+}
+```
+
+### Use Token in Requests
+```bash
+curl -H "Authorization: Bearer <access_token>" http://localhost:8000/api/reports
+```
+
+---
+
+## 📡 API Endpoints
+
+### Authentication (`/auth`)
+- `POST /auth/login` - Login with email/password
+- `POST /auth/refresh` - Refresh access token
+- `POST /auth/logout` - Logout (invalidate tokens)
+
+### Users (`/users`)
+- `GET /users/me` - Get current user profile
+- `GET /users` - List all users (admin)
+- `POST /users` - Create user (admin)
+- `PATCH /users/{id}` - Update user (admin)
+- `DELETE /users/{id}` - Delete user (admin)
+- `POST /users/api-keys` - Generate API key
+
+### Core DMARC (`/api`)
+- `GET /api/domains` - List domains
+- `GET /api/reports` - List reports (paginated)
+- `GET /api/reports/{id}` - Get report details
+- `POST /api/upload` - Bulk file upload
+
+### Analytics & Rollup (`/api/rollup`)
+- `GET /api/rollup/summary` - Aggregate statistics
+- `GET /api/rollup/sources` - Top source IPs
+- `GET /api/rollup/alignment` - DKIM/SPF alignment
+- `GET /api/rollup/timeline` - Time-series data
+- `GET /api/rollup/failure-trend` - Failure rate trends
+
+### Exports (`/api/export`)
+- `GET /api/export/reports/csv` - Export reports CSV
+- `GET /api/export/records/csv` - Export records CSV
+- `GET /api/export/sources/csv` - Export sources CSV
+- `GET /api/export/report/pdf` - Generate PDF summary
+
+### Alerts (`/alerts`)
+- `GET /alerts/history` - Alert history
+- `GET /alerts/rules` - Alert rules
+- `POST /alerts/rules` - Create rule (admin)
+- `PATCH /alerts/{id}/acknowledge` - Acknowledge alert
+- `PATCH /alerts/{id}/resolve` - Resolve alert
+- `POST /alerts/suppressions` - Create suppression
+
+### ML Analytics (`/analytics`)
+- `GET /analytics/geolocation/map` - Country heatmap
+- `GET /analytics/geolocation/lookup/{ip}` - IP geolocation
+- `GET /analytics/ml/models` - List ML models
+- `POST /analytics/ml/train` - Train model (admin)
+- `POST /analytics/ml/deploy` - Deploy model (admin)
+- `POST /analytics/anomalies/detect` - Detect anomalies
+- `GET /analytics/anomalies/recent` - Recent predictions
+
+### Tasks (`/tasks`)
+- `POST /tasks/trigger/email-ingestion` - Trigger email fetch
+- `POST /tasks/trigger/process-reports` - Process pending reports
+- `GET /tasks/status/{task_id}` - Get task status
+
+---
+
+## 🎯 Role-Based Access
+
+| Role | Permissions |
+|------|-------------|
+| **Admin** | Full access: users, models, rules, all data |
+| **Analyst** | Read/write: reports, alerts, analytics |
+| **Viewer** | Read-only: dashboards, reports, analytics |
+
+---
+
+## 📊 Monitoring
+
+### Flower Dashboard (Celery Tasks)
+Access at http://localhost:5555
+
+**Monitors**:
+- Active tasks
+- Task history
+- Worker status
+- Task schedules (Beat)
+
+### Scheduled Tasks
+```bash
+# View all schedules
+docker compose exec celery-beat celery -A app.celery_app inspect scheduled
+
+# Force run a task
+docker compose exec celery-worker celery -A app.celery_app call \
+  app.tasks.ml_tasks.train_anomaly_model_task
+```
+
+---
+
+## 🧪 Testing
 
 ```bash
 # Run all tests with coverage
 docker compose exec backend pytest -v --cov=app
 
-# Run only unit tests (fast)
+# Run specific test suite
 docker compose exec backend pytest tests/unit/ -v
-
-# Run only integration tests
 docker compose exec backend pytest tests/integration/ -v
 
 # Generate HTML coverage report
 docker compose exec backend pytest --cov=app --cov-report=html
 ```
 
-### CI/CD
+**Coverage**: 70%+ enforced in CI/CD
 
-Tests run automatically on GitHub Actions for:
-- All pushes to `main` and `develop` branches
-- All pull requests
-- Includes linting, security scans, and Docker builds
+---
 
-**For detailed testing documentation, see [`backend/TESTING.md`](backend/TESTING.md)**
+## 📚 Documentation
 
-## Development
+- **[FEATURES.md](FEATURES.md)** - Complete feature list
+- **[PHASE1_DEPLOYMENT.md](PHASE1_DEPLOYMENT.md)** - Celery setup
+- **[PHASE2_DEPLOYMENT.md](PHASE2_DEPLOYMENT.md)** - Authentication setup
+- **[PHASE3_DEPLOYMENT.md](PHASE3_DEPLOYMENT.md)** - Enhanced alerting setup
+- **[PHASE4_DEPLOYMENT.md](PHASE4_DEPLOYMENT.md)** - ML analytics setup
+- **[DEPLOYMENT.md](backend/DEPLOYMENT.md)** - Production deployment
+- **[TESTING.md](backend/TESTING.md)** - Testing documentation
+- **[API Docs](http://localhost:8000/docs)** - Interactive Swagger UI
 
-```bash
-# View logs
-docker compose logs -f backend
+---
 
-# Rebuild after changes
-docker compose up --build
+## 🏗️ Architecture
 
-# Stop services
-docker compose down
-
-# Reset database (WARNING: deletes all data)
-docker compose down -v
-docker compose up -d
-docker compose exec backend alembic upgrade head
-
-# Create a new migration (after model changes)
-docker compose exec backend alembic revision --autogenerate -m "description"
-
-# Check current migration version
-docker compose exec backend alembic current
-
-# View migration history
-docker compose exec backend alembic history
-```
-
-### Database Migrations
-
-The project uses Alembic for database schema management. Three migrations are included:
-
-1. **001_create_ingested_reports.py** - Creates table for tracking ingested email reports
-2. **002_create_dmarc_tables.py** - Creates main DMARC report and record tables
-3. **003_add_performance_indexes.py** - Adds indexes for query optimization
-
-**Important**: Always run migrations after:
-- Fresh deployment
-- Pulling updates that include new migrations
-- Resetting the database
-
-## Project Structure
-
-```
-dmarc/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── routes.py           # API endpoints (core, rollup, exports)
-│   │   ├── models/                 # SQLAlchemy models
-│   │   ├── services/
-│   │   │   ├── cache.py            # Redis caching service
-│   │   │   ├── export_csv.py       # CSV export service
-│   │   │   ├── export_pdf.py       # PDF generation service
-│   │   │   ├── processing.py       # DMARC report processing
-│   │   │   ├── email_ingestion.py  # IMAP email fetching
-│   │   │   └── alerting.py         # Multi-channel alerting
-│   │   ├── utils/
-│   │   │   └── ip_utils.py         # IP address utilities (CIDR parsing)
-│   │   └── config.py               # Application configuration
-│   ├── tests/                      # Test suite
-│   ├── DEPLOYMENT.md               # Production deployment guide
-│   └── TESTING.md                  # Testing documentation
-├── frontend/
-│   ├── index.html                  # Dashboard HTML
-│   ├── js/
-│   │   └── app.js                  # Dashboard logic (8 charts, filters, exports)
-│   └── css/
-│       └── styles.css              # Dashboard styling
-├── nginx/                          # Web server config
-├── .github/workflows/              # CI/CD pipelines
-├── docker-compose.yml              # Service orchestration (backend, db, redis, nginx)
-└── .env.sample                     # Environment template
-```
-
-## Production Deployment
-
-For production deployment with security hardening, SSL/TLS, backups, and monitoring:
-
-**See [`backend/DEPLOYMENT.md`](backend/DEPLOYMENT.md)** for the complete production deployment guide.
-
-### Key Production Features
-- 🔐 API key authentication
-- ⏱️ Rate limiting (upload: 20/hour, API: 100/min, exports: 5-10/min)
-- 🔒 SSL/TLS with Let's Encrypt
-- 🛡️ Security headers and CORS configuration
-- 🔔 Multi-channel alerting (Email, Slack, Discord, Teams)
-- 💾 Automated database backups
-- 📊 Health monitoring
-- 🔑 Optional basic auth for dashboard
-- ⚡ Redis caching for performance
-- 🛡️ CSV formula injection prevention
-- 📊 Export rate limiting and API key validation
-
-### System Requirements
-- **CPU**: 2+ cores recommended
-- **RAM**: 4GB minimum (database + Redis + backend)
-- **Storage**: 10GB+ (depends on report volume)
-- **Network**: HTTPS/TLS (Let's Encrypt or custom certificate)
-
-### Container Architecture
 ```
 ┌─────────────┐     ┌──────────────┐     ┌────────────┐
 │   Nginx     │────▶│   Backend    │────▶│ PostgreSQL │
@@ -379,18 +379,73 @@ For production deployment with security hardening, SSL/TLS, backups, and monitor
 └─────────────┘     └──────┬───────┘     └────────────┘
                            │
                            ▼
+                    ┌─────────────┐     ┌──────────────┐
+                    │    Redis    │◀───▶│Celery Worker │
+                    │   (Broker)  │     │   + Beat     │
+                    └─────────────┘     └──────────────┘
+                           │
+                           ▼
                     ┌─────────────┐
-                    │    Redis    │
-                    │   (Cache)   │
+                    │   Flower    │
+                    │  (Monitor)  │
                     └─────────────┘
 ```
 
-## Documentation
+---
 
-- **[DEPLOYMENT.md](backend/DEPLOYMENT.md)** - Production deployment guide
-- **[TESTING.md](backend/TESTING.md)** - Testing and QA documentation
-- **[API Docs](http://localhost:8000/docs)** - Interactive API documentation (when running)
+## 🔧 Development
 
-## License
+```bash
+# View logs
+docker compose logs -f backend
+docker compose logs -f celery-worker
+
+# Rebuild after code changes
+docker compose up --build -d backend
+
+# Create new migration
+docker compose exec backend alembic revision --autogenerate -m "description"
+
+# Reset database (WARNING: deletes all data)
+docker compose down -v
+docker compose up -d
+docker compose exec backend alembic upgrade head
+docker compose exec backend python scripts/create_admin_user.py
+```
+
+---
+
+## 🚢 Production Deployment
+
+See **[backend/DEPLOYMENT.md](backend/DEPLOYMENT.md)** for:
+- SSL/TLS with Let's Encrypt
+- Database backups
+- Security hardening
+- Performance tuning
+- Monitoring setup
+
+---
+
+## 📈 System Requirements
+
+**Minimum**:
+- CPU: 2 cores
+- RAM: 4GB
+- Storage: 10GB
+
+**Recommended**:
+- CPU: 4+ cores
+- RAM: 8GB
+- Storage: 50GB+ (depends on volume)
+
+---
+
+## 📄 License
 
 MIT
+
+---
+
+**Version**: 2.0.0 (Enterprise Edition)
+**Last Updated**: January 2026
+**Status**: ✅ Production Ready
