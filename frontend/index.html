@@ -12,6 +12,7 @@
         <header>
             <h1>📊 DMARC Report Dashboard</h1>
             <div class="header-actions">
+                <button id="helpBtn" class="btn-secondary" title="What is DMARC?">❓ Help</button>
                 <button id="uploadBtn" class="btn-primary">📤 Upload Reports</button>
                 <button id="ingestBtn" class="btn-primary">🔄 Process Reports</button>
                 <div class="export-dropdown">
@@ -106,19 +107,19 @@
         </div>
 
         <div class="stats-grid">
-            <div class="stat-card">
+            <div class="stat-card" title="Total number of DMARC aggregate reports received from email providers">
                 <h3>Total Reports</h3>
                 <div id="totalReports" class="stat-value">-</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" title="Percentage of emails that passed both SPF and DKIM authentication checks. Higher is better!">
                 <h3>Pass Rate</h3>
                 <div id="passRate" class="stat-value">-</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" title="Percentage of emails that failed both SPF and DKIM checks. These may be spoofed or misconfigured.">
                 <h3>Fail Rate</h3>
                 <div id="failRate" class="stat-value">-</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-card" title="Total number of individual email messages covered by all reports">
                 <h3>Total Messages</h3>
                 <div id="totalMessages" class="stat-value">-</div>
             </div>
@@ -271,6 +272,76 @@
                 <div class="modal-actions">
                     <button id="uploadFilesBtn" class="btn-primary" style="display: none;">Upload Files</button>
                     <button id="closeUploadBtn" class="btn-secondary">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>Understanding DMARC, SPF & DKIM</h2>
+                <span class="close" id="helpModalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="help-section">
+                    <h3>🛡️ What is DMARC?</h3>
+                    <p><strong>DMARC (Domain-based Message Authentication, Reporting and Conformance)</strong> is an email security protocol that helps protect your domain from email spoofing and phishing attacks.</p>
+                    <p>DMARC builds on two existing authentication methods (SPF and DKIM) and tells receiving mail servers what to do with emails that fail authentication checks.</p>
+                    <ul>
+                        <li><strong>Protect your brand:</strong> Prevent attackers from sending fake emails that appear to come from your domain</li>
+                        <li><strong>Improve deliverability:</strong> Legitimate emails are more likely to reach inboxes</li>
+                        <li><strong>Gain visibility:</strong> Receive reports showing who is sending email on behalf of your domain</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>📧 What is SPF?</h3>
+                    <p><strong>SPF (Sender Policy Framework)</strong> allows you to specify which mail servers are authorized to send email for your domain.</p>
+                    <p><strong>How it works:</strong> You publish an SPF record in DNS listing approved IP addresses. When an email arrives, the receiving server checks if it came from an approved IP.</p>
+                    <p><strong>Results you'll see:</strong></p>
+                    <ul>
+                        <li><span class="badge badge-success">PASS</span> - Email came from an authorized server</li>
+                        <li><span class="badge badge-danger">FAIL</span> - Email came from an unauthorized server (possible spoofing)</li>
+                        <li><span class="badge badge-danger">SOFTFAIL</span> - Probably not authorized, but domain owner isn't certain</li>
+                        <li><span class="badge badge-gray">NONE</span> - No SPF record found for the domain</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>🔐 What is DKIM?</h3>
+                    <p><strong>DKIM (DomainKeys Identified Mail)</strong> adds a digital signature to your emails to verify they haven't been tampered with during transit.</p>
+                    <p><strong>How it works:</strong> Your mail server adds an encrypted signature to each email's headers. The receiving server uses your public key (published in DNS) to verify the signature.</p>
+                    <p><strong>Results you'll see:</strong></p>
+                    <ul>
+                        <li><span class="badge badge-success">PASS</span> - Signature is valid, email hasn't been altered</li>
+                        <li><span class="badge badge-danger">FAIL</span> - Signature is invalid or missing (possible tampering)</li>
+                        <li><span class="badge badge-gray">NONE</span> - No DKIM signature was found</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>📊 Reading Your Dashboard</h3>
+                    <p><strong>Pass Rate:</strong> Percentage of emails passing BOTH SPF and DKIM. A high pass rate (>95%) indicates healthy email authentication.</p>
+                    <p><strong>Fail Rate:</strong> Emails failing BOTH checks. Investigate high fail rates - could indicate spoofing attempts or configuration issues.</p>
+                    <p><strong>Disposition:</strong> What the receiver did with the email:</p>
+                    <ul>
+                        <li><strong>None:</strong> Delivered normally (monitoring mode)</li>
+                        <li><strong>Quarantine:</strong> Sent to spam/junk folder</li>
+                        <li><strong>Reject:</strong> Blocked completely</li>
+                    </ul>
+                </div>
+
+                <div class="help-section">
+                    <h3>💡 Quick Tips</h3>
+                    <ul>
+                        <li><strong>Hover over badges</strong> to see detailed explanations of pass/fail reasons</li>
+                        <li><strong>Click "View"</strong> on any report to see detailed authentication records</li>
+                        <li><strong>Filter by source IP</strong> to investigate specific senders</li>
+                        <li><strong>Watch your pass rate:</strong> Sudden drops may indicate problems</li>
+                        <li><strong>Start with monitoring:</strong> Set DMARC policy to "none" initially to gather data without blocking legitimate email</li>
+                    </ul>
                 </div>
             </div>
         </div>

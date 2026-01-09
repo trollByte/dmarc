@@ -870,3 +870,51 @@ tr:hover {
         padding: 20px;
     }
 }
+
+/* Help Modal Styling */
+.help-section {
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e1e8ed;
+}
+
+.help-section:last-child {
+    border-bottom: none;
+}
+
+.help-section h3 {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 20px;
+}
+
+.help-section p {
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+.help-section ul {
+    margin-left: 20px;
+    margin-bottom: 15px;
+}
+
+.help-section li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+.help-section .badge {
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+/* Tooltip styling for badges */
+.badge {
+    cursor: help !important;
+    position: relative;
+}
+
+/* Stats card tooltip */
+.stat-card {
+    cursor: help;
+}

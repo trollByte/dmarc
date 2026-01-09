@@ -27,6 +27,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadDashboard();
 
     // Set up button event listeners
+    document.getElementById('helpBtn').addEventListener('click', openHelpModal);
     document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
     document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
     document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
@@ -99,6 +100,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('click', (e) => {
         if (e.target === modal) {
             modal.style.display = 'none';
+        }
+    });
+
+    // Help modal close button
+    const helpModal = document.getElementById('helpModal');
+    const helpCloseBtn = document.getElementById('helpModalClose');
+    helpCloseBtn.addEventListener('click', () => {
+        helpModal.style.display = 'none';
+    });
+    window.addEventListener('click', (e) => {
+        if (e.target === helpModal) {
+            helpModal.style.display = 'none';
         }
     });
 
@@ -832,6 +845,11 @@ async function triggerIngest() {
 }
 
 // Upload modal functions
+function openHelpModal() {
+    const modal = document.getElementById('helpModal');
+    modal.style.display = 'block';
+}
+
 function openUploadModal() {
     const modal = document.getElementById('uploadModal');
     modal.style.display = 'block';
@@ -1098,11 +1116,11 @@ async function loadRecordsForReport(reportId, page = 1) {
 
             // DKIM result (badge element)
             const dkimCell = row.insertCell(2);
-            dkimCell.appendChild(createAuthBadge(record.dkim_result));
+            dkimCell.appendChild(createAuthBadge(record.dkim_result, 'dkim'));
 
             // SPF result (badge element)
             const spfCell = row.insertCell(3);
-            spfCell.appendChild(createAuthBadge(record.spf_result));
+            spfCell.appendChild(createAuthBadge(record.spf_result, 'spf'));
 
             // Disposition (badge element)
             const dispCell = row.insertCell(4);
@@ -1160,7 +1178,7 @@ function viewRecordDetail(record) {
 
     // DKIM Authentication Card
     const dkimCard = createDetailCard('DKIM Authentication', [
-        { label: 'Result', value: record.dkim_result || 'N/A', badge: createAuthBadge(record.dkim_result) },
+        { label: 'Result', value: record.dkim_result || 'N/A', badge: createAuthBadge(record.dkim_result, 'dkim') },
         { label: 'Domain', value: record.dkim_domain || 'N/A' },
         { label: 'Selector', value: record.dkim_selector || 'N/A' }
     ]);
@@ -1168,7 +1186,7 @@ function viewRecordDetail(record) {
 
     // SPF Authentication Card
     const spfCard = createDetailCard('SPF Authentication', [
-        { label: 'Result', value: record.spf_result || 'N/A', badge: createAuthBadge(record.spf_result) },
+        { label: 'Result', value: record.spf_result || 'N/A', badge: createAuthBadge(record.spf_result, 'spf') },
         { label: 'Domain', value: record.spf_domain || 'N/A' },
         { label: 'Scope', value: record.spf_scope || 'N/A' }
     ]);
@@ -1233,21 +1251,59 @@ function hideRecordDetail() {
 }
 
 // Create authentication result badge (returns DOM element)
-function createAuthBadge(result) {
+// Explanation text for authentication results
+const AUTH_EXPLANATIONS = {
+    dkim: {
+        pass: 'DKIM Passed: The email was digitally signed by the sending domain and the signature is valid. This confirms the message hasn\'t been altered in transit.',
+        fail: 'DKIM Failed: The digital signature is invalid or missing. This could indicate email spoofing or message tampering.',
+        none: 'DKIM Not Found: No DKIM signature was present on this message.',
+        neutral: 'DKIM Neutral: A signature was present but couldn\'t be verified.',
+        temperror: 'DKIM Temporary Error: Verification failed due to a temporary issue (DNS lookup failure).',
+        permerror: 'DKIM Permanent Error: Verification failed due to a configuration error in the DKIM record.'
+    },
+    spf: {
+        pass: 'SPF Passed: The sending IP address is authorized to send email for this domain according to the domain\'s SPF record.',
+        fail: 'SPF Failed: The sending IP address is NOT authorized to send email for this domain. This may indicate spoofing or misconfiguration.',
+        softfail: 'SPF Soft Fail: The sending IP is probably not authorized (~all), but the domain owner isn\'t certain. Treated as suspicious.',
+        neutral: 'SPF Neutral: The domain owner has explicitly stated they cannot or do not want to assert whether the IP is authorized.',
+        none: 'SPF None: No SPF record was found for the domain.',
+        temperror: 'SPF Temporary Error: Verification failed due to a temporary DNS issue.',
+        permerror: 'SPF Permanent Error: The SPF record is malformed or has too many DNS lookups.'
+    }
+};
+
+function createAuthBadge(result, type = 'generic') {
     const span = document.createElement('span');
     span.className = 'badge';
 
     if (!result) {
         span.className += ' badge-gray';
         span.textContent = 'N/A';
+        span.title = 'No authentication result available';
     } else if (result === 'pass') {
         span.className += ' badge-success';
         span.textContent = 'PASS';
+        // Add explanation based on type
+        if (type === 'dkim' && AUTH_EXPLANATIONS.dkim.pass) {
+            span.title = AUTH_EXPLANATIONS.dkim.pass;
+        } else if (type === 'spf' && AUTH_EXPLANATIONS.spf.pass) {
+            span.title = AUTH_EXPLANATIONS.spf.pass;
+        } else {
+            span.title = 'Authentication check passed successfully';
+        }
     } else {
         span.className += ' badge-danger';
         span.textContent = result.toUpperCase();
+        // Add explanation based on type and result
+        const explanation = type === 'dkim'
+            ? AUTH_EXPLANATIONS.dkim[result.toLowerCase()]
+            : type === 'spf'
+            ? AUTH_EXPLANATIONS.spf[result.toLowerCase()]
+            : null;
+        span.title = explanation || `Authentication result: ${result}`;
     }
 
+    span.style.cursor = 'help';
     return span;
 }
 
