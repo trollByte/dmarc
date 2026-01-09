@@ -719,22 +719,22 @@ async function exportData(type) {
 
         switch (type) {
             case 'reports':
-                endpoint = '/api/export/reports/csv';
+                endpoint = '/export/reports/csv';
                 filename = `dmarc_reports_${new Date().toISOString().split('T')[0]}.csv`;
                 contentType = 'text/csv';
                 break;
             case 'records':
-                endpoint = '/api/export/records/csv';
+                endpoint = '/export/records/csv';
                 filename = `dmarc_records_${new Date().toISOString().split('T')[0]}.csv`;
                 contentType = 'text/csv';
                 break;
             case 'sources':
-                endpoint = '/api/export/sources/csv';
+                endpoint = '/export/sources/csv';
                 filename = `dmarc_sources_${new Date().toISOString().split('T')[0]}.csv`;
                 contentType = 'text/csv';
                 break;
             case 'pdf':
-                endpoint = '/api/export/report/pdf';
+                endpoint = '/export/report/pdf';
                 filename = `dmarc_summary_${new Date().toISOString().split('T')[0]}.pdf`;
                 contentType = 'application/pdf';
                 break;
