@@ -1273,38 +1273,51 @@ const AUTH_EXPLANATIONS = {
 };
 
 function createAuthBadge(result, type = 'generic') {
+    // Create wrapper for tooltip positioning
+    const wrapper = document.createElement('span');
+    wrapper.className = 'badge-wrapper';
+
     const span = document.createElement('span');
     span.className = 'badge';
+
+    let explanation = '';
 
     if (!result) {
         span.className += ' badge-gray';
         span.textContent = 'N/A';
-        span.title = 'No authentication result available';
+        explanation = 'No authentication result available';
     } else if (result === 'pass') {
         span.className += ' badge-success';
         span.textContent = 'PASS';
         // Add explanation based on type
         if (type === 'dkim' && AUTH_EXPLANATIONS.dkim.pass) {
-            span.title = AUTH_EXPLANATIONS.dkim.pass;
+            explanation = AUTH_EXPLANATIONS.dkim.pass;
         } else if (type === 'spf' && AUTH_EXPLANATIONS.spf.pass) {
-            span.title = AUTH_EXPLANATIONS.spf.pass;
+            explanation = AUTH_EXPLANATIONS.spf.pass;
         } else {
-            span.title = 'Authentication check passed successfully';
+            explanation = 'Authentication check passed successfully';
         }
     } else {
         span.className += ' badge-danger';
         span.textContent = result.toUpperCase();
         // Add explanation based on type and result
-        const explanation = type === 'dkim'
+        explanation = type === 'dkim'
             ? AUTH_EXPLANATIONS.dkim[result.toLowerCase()]
             : type === 'spf'
             ? AUTH_EXPLANATIONS.spf[result.toLowerCase()]
             : null;
-        span.title = explanation || `Authentication result: ${result}`;
+        explanation = explanation || `Authentication result: ${result}`;
     }
 
     span.style.cursor = 'help';
-    return span;
+
+    // Add custom tooltip on hover
+    span.addEventListener('mouseenter', (e) => showTooltip(e, explanation));
+    span.addEventListener('mouseleave', hideTooltip);
+    span.addEventListener('mousemove', updateTooltipPosition);
+
+    wrapper.appendChild(span);
+    return wrapper;
 }
 
 // Create disposition badge (returns DOM element)
@@ -1630,4 +1643,67 @@ async function loadTopOrganizationsChart() {
             }
         }
     });
+}
+
+// Tooltip management
+let currentTooltip = null;
+
+function showTooltip(event, text) {
+    // Remove any existing tooltip
+    hideTooltip();
+
+    // Create tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'badge-tooltip';
+    tooltip.textContent = text;
+    tooltip.id = 'active-tooltip';
+
+    // Add to body
+    document.body.appendChild(tooltip);
+    currentTooltip = tooltip;
+
+    // Position tooltip
+    positionTooltip(event, tooltip);
+}
+
+function positionTooltip(event, tooltip) {
+    const rect = event.target.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    // Calculate position (centered above the badge)
+    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+    let top = rect.top - tooltipRect.height - 10;
+
+    // Check if tooltip goes off left edge
+    if (left < 10) {
+        left = 10;
+    }
+
+    // Check if tooltip goes off right edge
+    if (left + tooltipRect.width > window.innerWidth - 10) {
+        left = window.innerWidth - tooltipRect.width - 10;
+    }
+
+    // Check if tooltip goes off top edge (show below instead)
+    if (top < 10) {
+        top = rect.bottom + 10;
+        tooltip.classList.add('bottom');
+    }
+
+    tooltip.style.position = 'fixed';
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+}
+
+function updateTooltipPosition(event) {
+    if (currentTooltip) {
+        positionTooltip(event, currentTooltip);
+    }
+}
+
+function hideTooltip() {
+    if (currentTooltip) {
+        currentTooltip.remove();
+        currentTooltip = null;
+    }
 }
