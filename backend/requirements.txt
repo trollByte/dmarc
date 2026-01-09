@@ -18,5 +18,9 @@ python-multipart==0.0.6
 slowapi==0.1.9
 redis==5.0.1
 hiredis==2.3.2
+celery[redis]==5.3.4
+flower==2.0.1
+kombu==5.3.4
+vine==5.1.0
 reportlab==4.0.9
 Pillow==10.2.0

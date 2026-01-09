@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     cache_enabled: bool = True
     cache_default_ttl: int = 300  # 5 minutes
 
+    # Celery (distributed task queue)
+    celery_broker_url: str = "redis://redis:6379/1"  # Use DB 1 for broker
+    celery_result_backend: str = ""  # Will be set to database_url + sqlalchemy prefix
+    celery_task_track_started: bool = True
+    celery_task_time_limit: int = 1800  # 30 minutes hard limit
+    celery_worker_prefetch_multiplier: int = 4
+    use_celery: bool = False  # Set to True to use Celery instead of APScheduler
+
     # Authentication
     require_api_key: bool = False  # Set to True in production
     api_keys: list[str] = []  # List of valid API keys (set via API_KEYS env var comma-separated)
