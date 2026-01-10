@@ -107,6 +107,52 @@ def process_reports_task(self, limit: int = 100):
     max_retries=2,
     soft_time_limit=120,  # 2 minutes soft limit
     time_limit=180,  # 3 minutes hard limit
+    name="app.tasks.processing.ingest_and_process_task"
+)
+def ingest_and_process_task(self, content: bytes, source: str):
+    """
+    Ingest and process a DMARC report from raw content.
+
+    Used by bulk import for async processing.
+
+    Args:
+        content: Raw XML content (bytes)
+        source: Source identifier (filename)
+
+    Returns:
+        dict: Processing result
+    """
+    logger.info(f"Ingesting and processing report: {source}")
+
+    db = SessionLocal()
+    self._db = db
+
+    try:
+        processor = ReportProcessor(db)
+        result = processor.process_report(content, source)
+
+        if result:
+            logger.info(f"Successfully processed report: {source}")
+            return {"status": "success", "source": source}
+        else:
+            logger.info(f"Duplicate report skipped: {source}")
+            return {"status": "duplicate", "source": source}
+
+    except Exception as e:
+        logger.error(f"Error processing report {source}: {str(e)}", exc_info=True)
+
+        if self.request.retries < self.max_retries:
+            raise self.retry(exc=e, countdown=30)
+        else:
+            return {"status": "failed", "error": str(e), "source": source}
+
+
+@celery_app.task(
+    bind=True,
+    base=DatabaseTask,
+    max_retries=2,
+    soft_time_limit=120,  # 2 minutes soft limit
+    time_limit=180,  # 3 minutes hard limit
     name="app.tasks.processing.process_single_report_task"
 )
 def process_single_report_task(self, report_id: int):

@@ -151,7 +151,7 @@ def bulk_import_sync(files: List[Path], batch_size: int = 10):
 def bulk_import_async(files: List[Path], batch_size: int = 100):
     """Import reports asynchronously using Celery"""
     try:
-        from app.tasks.processing import process_single_report_task
+        from app.tasks.processing import ingest_and_process_task
     except ImportError:
         print("ERROR: Celery tasks not available. Use --sync mode instead.")
         sys.exit(1)
@@ -165,7 +165,7 @@ def bulk_import_async(files: List[Path], batch_size: int = 100):
     for i, file_path in enumerate(files, 1):
         try:
             content = read_report_file(file_path)
-            process_single_report_task.delay(content, str(file_path))
+            ingest_and_process_task.delay(content, str(file_path))
             counts['success'] += 1
 
             if i % batch_size == 0 or i == total:
