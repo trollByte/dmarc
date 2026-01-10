@@ -9,7 +9,8 @@ Endpoints:
 """
 
 import logging
-from typing import List, Optional
+from functools import wraps
+from typing import List, Optional, Callable, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import UUID4
@@ -36,11 +37,32 @@ from app.schemas.analytics_schemas import (
     MLPredictionResponse,
 )
 from datetime import datetime, timedelta
-from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+def handle_service_errors(error_message: str):
+    """
+    Decorator to handle common service error patterns.
+
+    Catches ValueError (400), re-raises HTTPException, and logs unexpected errors (500).
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except HTTPException:
+                raise
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+            except Exception as e:
+                logger.error(f"{error_message}: {e}", exc_info=True)
+                raise HTTPException(status_code=500, detail=f"{error_message}: {str(e)}")
+        return wrapper
+    return decorator
 
 
 # ==================== Geolocation Endpoints ====================
@@ -50,6 +72,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
     response_model=CountryHeatmapResponse,
     summary="Get country heatmap data"
 )
+@handle_service_errors("Failed to generate heatmap")
 async def get_country_heatmap(
     days: int = Query(default=30, ge=1, le=365, description="Days of data to analyze"),
     use_cache: bool = Query(default=True, description="Use geolocation cache"),
@@ -61,33 +84,26 @@ async def get_country_heatmap(
 
     Returns IP distribution by country for the last N days.
     """
-    try:
-        # Get unique IPs from last N days
-        since = datetime.utcnow() - timedelta(days=days)
-        ip_addresses = db.query(DmarcRecord.source_ip).filter(
-            DmarcRecord.created_at >= since
-        ).distinct().all()
+    since = datetime.utcnow() - timedelta(days=days)
+    ip_addresses = db.query(DmarcRecord.source_ip).filter(
+        DmarcRecord.created_at >= since
+    ).distinct().all()
 
-        ip_list = [ip[0] for ip in ip_addresses]
+    ip_list = [ip[0] for ip in ip_addresses]
 
-        if not ip_list:
-            return CountryHeatmapResponse(
-                countries={},
-                max_count=0,
-                total_ips=0,
-                mapped_ips=0,
-                unmapped_ips=0
-            )
+    if not ip_list:
+        return CountryHeatmapResponse(
+            countries={},
+            max_count=0,
+            total_ips=0,
+            mapped_ips=0,
+            unmapped_ips=0
+        )
 
-        # Generate heatmap
-        geo_service = GeoLocationService(db)
-        heatmap_data = geo_service.generate_country_heatmap(ip_list, use_cache=use_cache)
+    geo_service = GeoLocationService(db)
+    heatmap_data = geo_service.generate_country_heatmap(ip_list, use_cache=use_cache)
 
-        return CountryHeatmapResponse(**heatmap_data)
-
-    except Exception as e:
-        logger.error(f"Error generating country heatmap: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to generate heatmap: {str(e)}")
+    return CountryHeatmapResponse(**heatmap_data)
 
 
 @router.get(
@@ -95,6 +111,7 @@ async def get_country_heatmap(
     response_model=GeoLocationResponse,
     summary="Lookup geolocation for single IP"
 )
+@handle_service_errors("Lookup failed")
 async def lookup_ip_geolocation(
     ip_address: str,
     use_cache: bool = Query(default=True, description="Use geolocation cache"),
@@ -106,23 +123,16 @@ async def lookup_ip_geolocation(
 
     Uses MaxMind GeoLite2 database with 90-day caching.
     """
-    try:
-        geo_service = GeoLocationService(db)
-        geo_data = geo_service.lookup_ip(ip_address, use_cache=use_cache)
+    geo_service = GeoLocationService(db)
+    geo_data = geo_service.lookup_ip(ip_address, use_cache=use_cache)
 
-        if not geo_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Geolocation not found for IP: {ip_address}"
-            )
+    if not geo_data:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Geolocation not found for IP: {ip_address}"
+        )
 
-        return GeoLocationResponse(**geo_data)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error looking up IP {ip_address}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Lookup failed: {str(e)}")
+    return GeoLocationResponse(**geo_data)
 
 
 @router.post(
@@ -130,6 +140,7 @@ async def lookup_ip_geolocation(
     response_model=List[GeoLocationResponse],
     summary="Bulk IP geolocation lookup"
 )
+@handle_service_errors("Bulk lookup failed")
 async def lookup_ips_bulk(
     request: GeoLocationBulkRequest,
     db: Session = Depends(get_db),
@@ -140,27 +151,16 @@ async def lookup_ips_bulk(
 
     More efficient than individual lookups. Max 1000 IPs per request.
     """
-    try:
-        geo_service = GeoLocationService(db)
-        results = geo_service.lookup_ips_bulk(
-            request.ip_addresses,
-            use_cache=request.use_cache
-        )
+    geo_service = GeoLocationService(db)
+    results = geo_service.lookup_ips_bulk(
+        request.ip_addresses,
+        use_cache=request.use_cache
+    )
 
-        # Convert to list of responses (include None results as empty data)
-        response_list = []
-        for ip, geo_data in results.items():
-            if geo_data:
-                response_list.append(GeoLocationResponse(**geo_data))
-            else:
-                # Return IP with no geolocation data
-                response_list.append(GeoLocationResponse(ip_address=ip))
-
-        return response_list
-
-    except Exception as e:
-        logger.error(f"Error in bulk IP lookup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Bulk lookup failed: {str(e)}")
+    return [
+        GeoLocationResponse(**geo_data) if geo_data else GeoLocationResponse(ip_address=ip)
+        for ip, geo_data in results.items()
+    ]
 
 
 @router.get(
@@ -168,19 +168,15 @@ async def lookup_ips_bulk(
     response_model=CacheStatsResponse,
     summary="Get geolocation cache statistics"
 )
+@handle_service_errors("Failed to get stats")
 async def get_cache_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get statistics about geolocation cache."""
-    try:
-        geo_service = GeoLocationService(db)
-        stats = geo_service.get_cache_stats()
-        return CacheStatsResponse(**stats)
-
-    except Exception as e:
-        logger.error(f"Error getting cache stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+    geo_service = GeoLocationService(db)
+    stats = geo_service.get_cache_stats()
+    return CacheStatsResponse(**stats)
 
 
 # ==================== ML Model Management ====================
@@ -190,6 +186,7 @@ async def get_cache_stats(
     response_model=List[MLModelSummary],
     summary="List trained ML models"
 )
+@handle_service_errors("Failed to list models")
 async def list_models(
     model_type: Optional[str] = Query(default="isolation_forest", description="Model type"),
     active_only: bool = Query(default=False, description="Show only active models"),
@@ -201,15 +198,10 @@ async def list_models(
 
     Sorted by creation date (newest first).
     """
-    try:
-        ml_service = MLAnalyticsService(db)
-        models = ml_service.list_models(model_type=model_type, active_only=active_only)
+    ml_service = MLAnalyticsService(db)
+    models = ml_service.list_models(model_type=model_type, active_only=active_only)
 
-        return [MLModelSummary.model_validate(model) for model in models]
-
-    except Exception as e:
-        logger.error(f"Error listing models: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
+    return [MLModelSummary.model_validate(model) for model in models]
 
 
 @router.get(
@@ -217,26 +209,20 @@ async def list_models(
     response_model=MLModelDetail,
     summary="Get ML model details"
 )
+@handle_service_errors("Failed to get model")
 async def get_model_detail(
     model_id: UUID4,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get detailed information about a specific ML model."""
-    try:
-        from app.models import MLModel
+    from app.models import MLModel
 
-        model = db.query(MLModel).filter(MLModel.id == model_id).first()
-        if not model:
-            raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+    model = db.query(MLModel).filter(MLModel.id == model_id).first()
+    if not model:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
-        return MLModelDetail.model_validate(model)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting model details: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get model: {str(e)}")
+    return MLModelDetail.model_validate(model)
 
 
 @router.post(
@@ -244,6 +230,7 @@ async def get_model_detail(
     response_model=TrainModelResponse,
     summary="Train ML model (admin only)"
 )
+@handle_service_errors("Training failed")
 async def train_model(
     request: TrainModelRequest,
     background_tasks: BackgroundTasks,
@@ -260,36 +247,28 @@ async def train_model(
     - Contamination: expected anomaly proportion (default: 5%)
     - Auto-deploys if first model or better than current
     """
-    try:
-        ml_service = MLAnalyticsService(db)
+    ml_service = MLAnalyticsService(db)
 
-        # Train model (synchronous)
-        model, metrics = ml_service.train_anomaly_model(
-            days=request.days,
-            contamination=request.contamination,
-            user_id=str(current_user.id)
-        )
+    model, metrics = ml_service.train_anomaly_model(
+        days=request.days,
+        contamination=request.contamination,
+        user_id=str(current_user.id)
+    )
 
-        # Auto-deploy if first model
-        deployed_model = ml_service.get_deployed_model()
-        if not deployed_model:
-            ml_service.deploy_model(str(model.id))
-            logger.info(f"Auto-deployed first model: {model.model_name}")
+    # Auto-deploy if first model
+    deployed_model = ml_service.get_deployed_model()
+    if not deployed_model:
+        ml_service.deploy_model(str(model.id))
+        logger.info(f"Auto-deployed first model: {model.model_name}")
 
-        return TrainModelResponse(
-            status="success",
-            model_id=model.id,
-            model_name=model.model_name,
-            training_samples=model.training_samples,
-            anomalies_detected=metrics["n_anomalies_detected"],
-            anomaly_percentage=metrics["anomaly_percentage"],
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error training model: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+    return TrainModelResponse(
+        status="success",
+        model_id=model.id,
+        model_name=model.model_name,
+        training_samples=model.training_samples,
+        anomalies_detected=metrics["n_anomalies_detected"],
+        anomaly_percentage=metrics["anomaly_percentage"],
+    )
 
 
 @router.post(
@@ -297,6 +276,7 @@ async def train_model(
     response_model=DeployModelResponse,
     summary="Deploy trained ML model (admin only)"
 )
+@handle_service_errors("Deployment failed")
 async def deploy_model(
     request: DeployModelRequest,
     db: Session = Depends(get_db),
@@ -307,22 +287,15 @@ async def deploy_model(
 
     **Admin only**. Deactivates all other models of the same type.
     """
-    try:
-        ml_service = MLAnalyticsService(db)
-        model = ml_service.deploy_model(str(request.model_id))
+    ml_service = MLAnalyticsService(db)
+    model = ml_service.deploy_model(str(request.model_id))
 
-        return DeployModelResponse(
-            status="success",
-            model_id=model.id,
-            model_name=model.model_name,
-            message=f"Model {model.model_name} deployed successfully"
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error deploying model: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Deployment failed: {str(e)}")
+    return DeployModelResponse(
+        status="success",
+        model_id=model.id,
+        model_name=model.model_name,
+        message=f"Model {model.model_name} deployed successfully"
+    )
 
 
 @router.get(
@@ -330,23 +303,17 @@ async def deploy_model(
     response_model=ModelStatsResponse,
     summary="Get ML model statistics"
 )
+@handle_service_errors("Failed to get stats")
 async def get_model_stats(
     model_id: UUID4,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get statistics for a trained ML model."""
-    try:
-        ml_service = MLAnalyticsService(db)
-        stats = ml_service.get_model_stats(str(model_id))
+    ml_service = MLAnalyticsService(db)
+    stats = ml_service.get_model_stats(str(model_id))
 
-        return ModelStatsResponse(**stats)
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error getting model stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+    return ModelStatsResponse(**stats)
 
 
 # ==================== Anomaly Detection ====================
@@ -356,6 +323,7 @@ async def get_model_stats(
     response_model=AnomaliesResponse,
     summary="Detect anomalous IP addresses"
 )
+@handle_service_errors("Detection failed")
 async def detect_anomalies(
     request: DetectAnomaliesRequest,
     db: Session = Depends(get_db),
@@ -368,34 +336,25 @@ async def detect_anomalies(
 
     Returns IPs sorted by anomaly score (most anomalous first).
     """
-    try:
-        ml_service = MLAnalyticsService(db)
+    ml_service = MLAnalyticsService(db)
 
-        # Use deployed model if no model_id specified
-        model_id = str(request.model_id) if request.model_id else None
+    model_id = str(request.model_id) if request.model_id else None
 
-        anomalies = ml_service.detect_anomalies(
-            model_id=model_id,
-            days=request.days,
-            threshold=request.threshold
-        )
+    anomalies = ml_service.detect_anomalies(
+        model_id=model_id,
+        days=request.days,
+        threshold=request.threshold
+    )
 
-        # Get deployed model info
-        deployed_model = ml_service.get_deployed_model()
+    deployed_model = ml_service.get_deployed_model()
 
-        return AnomaliesResponse(
-            status="success",
-            model_id=deployed_model.id if deployed_model else None,
-            model_name=deployed_model.model_name if deployed_model else None,
-            anomalies_detected=len(anomalies),
-            anomalies=anomalies
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error detecting anomalies: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Detection failed: {str(e)}")
+    return AnomaliesResponse(
+        status="success",
+        model_id=deployed_model.id if deployed_model else None,
+        model_name=deployed_model.model_name if deployed_model else None,
+        anomalies_detected=len(anomalies),
+        anomalies=anomalies
+    )
 
 
 @router.get(
@@ -403,6 +362,7 @@ async def detect_anomalies(
     response_model=List[MLPredictionResponse],
     summary="Get recent anomaly predictions"
 )
+@handle_service_errors("Failed to fetch anomalies")
 async def get_recent_anomalies(
     days: int = Query(default=7, ge=1, le=90, description="Days of predictions to fetch"),
     limit: int = Query(default=100, ge=1, le=1000, description="Max predictions to return"),
@@ -414,20 +374,15 @@ async def get_recent_anomalies(
 
     Returns stored predictions from the last N days.
     """
-    try:
-        from app.models import MLPrediction
+    from app.models import MLPrediction
 
-        since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.utcnow() - timedelta(days=days)
 
-        predictions = db.query(MLPrediction).filter(
-            MLPrediction.predicted_at >= since,
-            MLPrediction.prediction_type == "anomaly"
-        ).order_by(
-            MLPrediction.predicted_at.desc()
-        ).limit(limit).all()
+    predictions = db.query(MLPrediction).filter(
+        MLPrediction.predicted_at >= since,
+        MLPrediction.prediction_type == "anomaly"
+    ).order_by(
+        MLPrediction.predicted_at.desc()
+    ).limit(limit).all()
 
-        return [MLPredictionResponse.model_validate(p) for p in predictions]
-
-    except Exception as e:
-        logger.error(f"Error fetching recent anomalies: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to fetch anomalies: {str(e)}")
+    return [MLPredictionResponse.model_validate(p) for p in predictions]

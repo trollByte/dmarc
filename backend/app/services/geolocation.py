@@ -170,6 +170,34 @@ class GeoLocationService:
 
     # ==================== Geographic Aggregation ====================
 
+    def _aggregate_by_key(
+        self,
+        ip_addresses: List[str],
+        key_extractor,
+        use_cache: bool = True
+    ) -> Dict[str, int]:
+        """
+        Aggregate IP geolocation data by a custom key.
+
+        Args:
+            ip_addresses: List of IP addresses
+            key_extractor: Function that takes geo_data and returns a key (or None to skip)
+            use_cache: Use database cache
+
+        Returns:
+            Dictionary mapping key -> count, sorted by count descending
+        """
+        geo_results = self.lookup_ips_bulk(ip_addresses, use_cache=use_cache)
+
+        counts = {}
+        for geo_data in geo_results.values():
+            if geo_data:
+                key = key_extractor(geo_data)
+                if key:
+                    counts[key] = counts.get(key, 0) + 1
+
+        return dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
+
     def get_country_counts(
         self,
         ip_addresses: List[str],
@@ -185,15 +213,11 @@ class GeoLocationService:
         Returns:
             Dictionary mapping country_code -> count
         """
-        geo_results = self.lookup_ips_bulk(ip_addresses, use_cache=use_cache)
-
-        country_counts = {}
-        for ip, geo_data in geo_results.items():
-            if geo_data and geo_data.get("country_code"):
-                country = geo_data["country_code"]
-                country_counts[country] = country_counts.get(country, 0) + 1
-
-        return dict(sorted(country_counts.items(), key=lambda x: x[1], reverse=True))
+        return self._aggregate_by_key(
+            ip_addresses,
+            lambda geo: geo.get("country_code"),
+            use_cache
+        )
 
     def get_city_counts(
         self,
@@ -210,15 +234,14 @@ class GeoLocationService:
         Returns:
             Dictionary mapping "City, Country" -> count
         """
-        geo_results = self.lookup_ips_bulk(ip_addresses, use_cache=use_cache)
+        def city_key(geo):
+            city = geo.get("city_name")
+            country = geo.get("country_code")
+            if city and country:
+                return f"{city}, {country}"
+            return None
 
-        city_counts = {}
-        for ip, geo_data in geo_results.items():
-            if geo_data and geo_data.get("city_name") and geo_data.get("country_code"):
-                city_key = f"{geo_data['city_name']}, {geo_data['country_code']}"
-                city_counts[city_key] = city_counts.get(city_key, 0) + 1
-
-        return dict(sorted(city_counts.items(), key=lambda x: x[1], reverse=True))
+        return self._aggregate_by_key(ip_addresses, city_key, use_cache)
 
     def get_coordinates(
         self,

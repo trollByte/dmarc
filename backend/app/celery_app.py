@@ -38,6 +38,7 @@ celery_app.conf.update(
     task_time_limit=settings.celery_task_time_limit,
     worker_prefetch_multiplier=settings.celery_worker_prefetch_multiplier,
     result_expires=3600,  # Results expire after 1 hour
+    beat_schedule_filename="/app/celery-data/celerybeat-schedule",
 )
 
 # Celery Beat schedule (periodic tasks)

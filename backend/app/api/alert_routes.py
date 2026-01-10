@@ -212,6 +212,33 @@ async def resolve_alert(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+def _execute_bulk_operation(
+    service: EnhancedAlertService,
+    alert_ids: List[UUID],
+    user_id: str,
+    operation,
+    note: Optional[str] = None
+) -> BulkOperationResponse:
+    """Execute a bulk operation on multiple alerts"""
+    success_count = 0
+    failed_count = 0
+    errors = []
+
+    for alert_id in alert_ids:
+        try:
+            operation(str(alert_id), user_id, note=note)
+            success_count += 1
+        except Exception as e:
+            failed_count += 1
+            errors.append(f"Alert {alert_id}: {str(e)}")
+
+    return BulkOperationResponse(
+        success_count=success_count,
+        failed_count=failed_count,
+        errors=errors
+    )
+
+
 @router.post(
     "/bulk/acknowledge",
     response_model=BulkOperationResponse,
@@ -238,26 +265,12 @@ async def bulk_acknowledge_alerts(
     ```
     """
     service = EnhancedAlertService(db)
-    success_count = 0
-    failed_count = 0
-    errors = []
-
-    for alert_id in request.alert_ids:
-        try:
-            service.acknowledge_alert(
-                str(alert_id),
-                str(current_user.id),
-                note=request.note
-            )
-            success_count += 1
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"Alert {alert_id}: {str(e)}")
-
-    return BulkOperationResponse(
-        success_count=success_count,
-        failed_count=failed_count,
-        errors=errors
+    return _execute_bulk_operation(
+        service,
+        request.alert_ids,
+        str(current_user.id),
+        service.acknowledge_alert,
+        request.note
     )
 
 
@@ -287,26 +300,12 @@ async def bulk_resolve_alerts(
     ```
     """
     service = EnhancedAlertService(db)
-    success_count = 0
-    failed_count = 0
-    errors = []
-
-    for alert_id in request.alert_ids:
-        try:
-            service.resolve_alert(
-                str(alert_id),
-                str(current_user.id),
-                note=request.note
-            )
-            success_count += 1
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"Alert {alert_id}: {str(e)}")
-
-    return BulkOperationResponse(
-        success_count=success_count,
-        failed_count=failed_count,
-        errors=errors
+    return _execute_bulk_operation(
+        service,
+        request.alert_ids,
+        str(current_user.id),
+        service.resolve_alert,
+        request.note
     )
 
 

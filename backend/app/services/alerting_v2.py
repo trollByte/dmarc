@@ -364,64 +364,60 @@ class EnhancedAlertService:
         metrics: Dict[str, float]
     ) -> Optional[AlertHistory]:
         """Evaluate a single rule"""
+        # Rule type configuration: metric_key, condition_key, threshold_check, message_template
+        rule_config = {
+            AlertType.FAILURE_RATE: {
+                "metric_key": "failure_rate",
+                "condition_key": "failure_rate",
+                "check": lambda val, thresh: val >= thresh,
+                "title": "High failure rate",
+                "message": lambda val, thresh: f"DMARC failure rate is {val:.1f}% (threshold: {thresh}%)",
+                "threshold_transform": lambda t: t,
+            },
+            AlertType.VOLUME_SPIKE: {
+                "metric_key": "volume_change_percent",
+                "condition_key": "volume_spike",
+                "check": lambda val, thresh: val >= thresh,
+                "title": "Volume spike",
+                "message": lambda val, thresh: f"Email volume increased by {val:.1f}% (threshold: {thresh}%)",
+                "threshold_transform": lambda t: t,
+            },
+            AlertType.VOLUME_DROP: {
+                "metric_key": "volume_change_percent",
+                "condition_key": "volume_drop",
+                "check": lambda val, thresh: val <= -abs(thresh),
+                "title": "Volume drop",
+                "message": lambda val, thresh: f"Email volume decreased by {abs(val):.1f}% (threshold: {abs(thresh)}%)",
+                "threshold_transform": lambda t: -abs(t),
+            },
+        }
+
+        config = rule_config.get(rule.alert_type)
+        if not config:
+            return None
+
+        metric_value = metrics.get(config["metric_key"])
+        if metric_value is None:
+            return None
+
         conditions = rule.conditions
+        threshold = conditions.get(config["condition_key"], {}).get(rule.severity.value)
+        if not threshold:
+            return None
 
-        # Match rule type to metric
-        if rule.alert_type == AlertType.FAILURE_RATE:
-            metric_value = metrics.get("failure_rate")
-            if metric_value is None:
-                return None
+        if not config["check"](metric_value, threshold):
+            return None
 
-            threshold = conditions.get("failure_rate", {}).get(rule.severity.value)
-            if threshold and metric_value >= threshold:
-                return self.create_alert(
-                    alert_type=AlertType.FAILURE_RATE,
-                    severity=rule.severity,
-                    title=f"{rule.severity.value.upper()}: High failure rate for {domain}",
-                    message=f"DMARC failure rate is {metric_value:.1f}% (threshold: {threshold}%)",
-                    domain=domain,
-                    current_value=metric_value,
-                    threshold_value=threshold,
-                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
-                )
-
-        elif rule.alert_type == AlertType.VOLUME_SPIKE:
-            metric_value = metrics.get("volume_change_percent")
-            if metric_value is None:
-                return None
-
-            threshold = conditions.get("volume_spike", {}).get(rule.severity.value)
-            if threshold and metric_value >= threshold:
-                return self.create_alert(
-                    alert_type=AlertType.VOLUME_SPIKE,
-                    severity=rule.severity,
-                    title=f"{rule.severity.value.upper()}: Volume spike for {domain}",
-                    message=f"Email volume increased by {metric_value:.1f}% (threshold: {threshold}%)",
-                    domain=domain,
-                    current_value=metric_value,
-                    threshold_value=threshold,
-                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
-                )
-
-        elif rule.alert_type == AlertType.VOLUME_DROP:
-            metric_value = metrics.get("volume_change_percent")
-            if metric_value is None:
-                return None
-
-            threshold = conditions.get("volume_drop", {}).get(rule.severity.value)
-            if threshold and metric_value <= -abs(threshold):  # Negative threshold
-                return self.create_alert(
-                    alert_type=AlertType.VOLUME_DROP,
-                    severity=rule.severity,
-                    title=f"{rule.severity.value.upper()}: Volume drop for {domain}",
-                    message=f"Email volume decreased by {abs(metric_value):.1f}% (threshold: {abs(threshold)}%)",
-                    domain=domain,
-                    current_value=metric_value,
-                    threshold_value=-abs(threshold),
-                    alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
-                )
-
-        return None
+        return self.create_alert(
+            alert_type=rule.alert_type,
+            severity=rule.severity,
+            title=f"{rule.severity.value.upper()}: {config['title']} for {domain}",
+            message=config["message"](metric_value, threshold),
+            domain=domain,
+            current_value=metric_value,
+            threshold_value=config["threshold_transform"](threshold),
+            alert_metadata={"rule_id": str(rule.id), "rule_name": rule.name}
+        )
 
     # ==================== Alert Suppressions ====================
 

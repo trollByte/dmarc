@@ -73,61 +73,76 @@ def find_report_files(directory: str) -> List[Path]:
     return files
 
 
+def print_header(title: str, total: int) -> None:
+    """Print import header"""
+    print(f"\n{'='*60}")
+    print(f"Starting {title} import of {total} files")
+    print(f"{'='*60}\n")
+
+
+def print_progress(
+    i: int,
+    total: int,
+    file_path: Path,
+    status_char: str,
+    start_time: float,
+    counts: dict,
+    is_sync: bool
+) -> None:
+    """Print progress update"""
+    elapsed = time.time() - start_time
+    rate = i / elapsed if elapsed > 0 else 0
+
+    if is_sync:
+        eta = (total - i) / rate if rate > 0 else 0
+        print(f"{status_char} [{i}/{total}] {file_path.name[:50]:<50} "
+              f"(+ {counts['success']} | x {counts.get('duplicate', 0)} | ! {counts['error']} | "
+              f"{rate:.1f} files/sec | ETA: {eta/60:.1f}m)")
+    else:
+        print(f"{status_char} Queued [{i}/{total}] {file_path.name[:50]:<50} "
+              f"({rate:.1f} files/sec)")
+
+
 def bulk_import_sync(files: List[Path], batch_size: int = 10):
     """Import reports synchronously (no Celery)"""
     db = SessionLocal()
     processor = ReportProcessor(db)
 
     total = len(files)
-    success_count = 0
-    error_count = 0
-    duplicate_count = 0
+    counts = {'success': 0, 'error': 0, 'duplicate': 0}
 
-    print(f"\n{'='*60}")
-    print(f"Starting SYNCHRONOUS import of {total} files")
-    print(f"{'='*60}\n")
-
+    print_header("SYNCHRONOUS", total)
     start_time = time.time()
 
     for i, file_path in enumerate(files, 1):
         try:
             content = read_report_file(file_path)
-
-            # Process the report
             result = processor.process_report(content, str(file_path))
 
             if result:
-                success_count += 1
-                status = "✓"
+                counts['success'] += 1
+                status = "+"
             else:
-                duplicate_count += 1
-                status = "⊗"  # Duplicate
+                counts['duplicate'] += 1
+                status = "x"
 
-            # Progress update
             if i % batch_size == 0 or i == total:
-                elapsed = time.time() - start_time
-                rate = i / elapsed if elapsed > 0 else 0
-                eta = (total - i) / rate if rate > 0 else 0
-
-                print(f"{status} [{i}/{total}] {file_path.name[:50]:<50} "
-                      f"(✓ {success_count} | ⊗ {duplicate_count} | ✗ {error_count} | "
-                      f"{rate:.1f} files/sec | ETA: {eta/60:.1f}m)")
+                print_progress(i, total, file_path, status, start_time, counts, is_sync=True)
 
         except Exception as e:
-            error_count += 1
-            print(f"✗ [{i}/{total}] {file_path.name[:50]:<50} ERROR: {str(e)[:50]}")
+            counts['error'] += 1
+            print(f"! [{i}/{total}] {file_path.name[:50]:<50} ERROR: {str(e)[:50]}")
 
     db.close()
-
     elapsed = time.time() - start_time
 
     print(f"\n{'='*60}")
     print(f"Import Complete!")
     print(f"{'='*60}")
     print(f"Total files:      {total}")
-    print(f"✓ Imported:       {success_count}")
-    print(f"⊗ Duplicates:     {duplicate_count}")
-    print(f"✗ Errors:         {error_count}")
+    print(f"+ Imported:       {counts['success']}")
+    print(f"x Duplicates:     {counts['duplicate']}")
+    print(f"! Errors:         {counts['error']}")
     print(f"Time elapsed:     {elapsed/60:.1f} minutes")
     print(f"Average rate:     {total/elapsed:.1f} files/sec")
     print(f"{'='*60}\n")
@@ -142,34 +157,23 @@ def bulk_import_async(files: List[Path], batch_size: int = 100):
         sys.exit(1)
 
     total = len(files)
-    queued = 0
-    error_count = 0
+    counts = {'success': 0, 'error': 0}
 
-    print(f"\n{'='*60}")
-    print(f"Starting ASYNC import of {total} files")
-    print(f"{'='*60}\n")
-
+    print_header("ASYNC", total)
     start_time = time.time()
 
     for i, file_path in enumerate(files, 1):
         try:
             content = read_report_file(file_path)
+            process_single_report_task.delay(content, str(file_path))
+            counts['success'] += 1
 
-            # Queue the task in Celery
-            task = process_single_report_task.delay(content, str(file_path))
-            queued += 1
-
-            # Progress update
             if i % batch_size == 0 or i == total:
-                elapsed = time.time() - start_time
-                rate = i / elapsed if elapsed > 0 else 0
-
-                print(f"⏳ Queued [{i}/{total}] {file_path.name[:50]:<50} "
-                      f"({rate:.1f} files/sec)")
+                print_progress(i, total, file_path, "~", start_time, counts, is_sync=False)
 
         except Exception as e:
-            error_count += 1
-            print(f"✗ [{i}/{total}] {file_path.name[:50]:<50} ERROR: {str(e)[:50]}")
+            counts['error'] += 1
+            print(f"! [{i}/{total}] {file_path.name[:50]:<50} ERROR: {str(e)[:50]}")
 
     elapsed = time.time() - start_time
 
@@ -177,12 +181,12 @@ def bulk_import_async(files: List[Path], batch_size: int = 100):
     print(f"Queueing Complete!")
     print(f"{'='*60}")
     print(f"Total files:      {total}")
-    print(f"⏳ Queued:         {queued}")
-    print(f"✗ Queue errors:   {error_count}")
+    print(f"~ Queued:         {counts['success']}")
+    print(f"! Queue errors:   {counts['error']}")
     print(f"Time elapsed:     {elapsed:.1f} seconds")
     print(f"{'='*60}")
-    print(f"\n📊 Monitor processing at: http://localhost:5555")
-    print(f"   Celery workers will process these files in the background.\n")
+    print(f"\nMonitor processing at: http://localhost:5555")
+    print(f"Celery workers will process these files in the background.\n")
 
 
 def main():

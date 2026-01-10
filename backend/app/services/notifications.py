@@ -13,8 +13,9 @@ import smtplib
 import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
+from dataclasses import dataclass
 
 from app.services.alerting import Alert
 from app.config import get_settings
@@ -22,11 +23,54 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class SMTPConfig:
+    """SMTP configuration container"""
+    host: str
+    port: int
+    user: Optional[str]
+    password: Optional[str]
+    from_address: str
+    to_address: str
+    use_tls: bool
+
+
 class NotificationService:
     """Service for sending alert notifications"""
 
     def __init__(self):
         self.settings = get_settings()
+
+    def _get_smtp_config(self) -> Optional[SMTPConfig]:
+        """Get SMTP configuration if properly configured"""
+        if not self._is_email_configured():
+            return None
+
+        return SMTPConfig(
+            host=getattr(self.settings, 'smtp_host'),
+            port=getattr(self.settings, 'smtp_port', 587),
+            user=getattr(self.settings, 'smtp_user', None),
+            password=getattr(self.settings, 'smtp_password', None),
+            from_address=getattr(self.settings, 'smtp_from'),
+            to_address=getattr(self.settings, 'alert_email_to'),
+            use_tls=getattr(self.settings, 'smtp_use_tls', True)
+        )
+
+    def _send_email(self, subject: str, html_body: str, config: SMTPConfig) -> None:
+        """Send an email using the provided configuration"""
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = config.from_address
+        msg['To'] = config.to_address
+        msg['Date'] = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S +0000')
+        msg.attach(MIMEText(html_body, 'html'))
+
+        with smtplib.SMTP(config.host, config.port) as server:
+            if config.use_tls:
+                server.starttls()
+            if config.user and config.password:
+                server.login(config.user, config.password)
+            server.send_message(msg)
 
     def send_alerts(self, alerts: List[Alert]) -> dict:
         """
@@ -129,43 +173,25 @@ class NotificationService:
 
     def send_email_alerts(self, alerts: List[Alert]):
         """Send alerts via email (SMTP)"""
-        smtp_host = getattr(self.settings, 'smtp_host')
-        smtp_port = getattr(self.settings, 'smtp_port', 587)
-        smtp_user = getattr(self.settings, 'smtp_user', None)
-        smtp_password = getattr(self.settings, 'smtp_password', None)
-        smtp_from = getattr(self.settings, 'smtp_from')
-        alert_email_to = getattr(self.settings, 'alert_email_to')
-        smtp_use_tls = getattr(self.settings, 'smtp_use_tls', True)
+        config = self._get_smtp_config()
+        if not config:
+            raise ValueError("SMTP not configured")
 
         # Group alerts by severity
         critical = [a for a in alerts if a.severity == 'critical']
         warning = [a for a in alerts if a.severity == 'warning']
         info = [a for a in alerts if a.severity == 'info']
 
-        # Build email
-        subject = f"DMARC Alert: {len(critical)} Critical, {len(warning)} Warning"
-        if not critical and not warning:
+        # Build subject
+        if critical or warning:
+            subject = f"DMARC Alert: {len(critical)} Critical, {len(warning)} Warning"
+        else:
             subject = f"DMARC Alert: {len(info)} Informational"
 
         body = self._build_email_body(alerts)
+        self._send_email(subject, body, config)
 
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = smtp_from
-        msg['To'] = alert_email_to
-        msg['Date'] = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S +0000')
-
-        msg.attach(MIMEText(body, 'html'))
-
-        # Send email
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            if smtp_use_tls:
-                server.starttls()
-            if smtp_user and smtp_password:
-                server.login(smtp_user, smtp_password)
-            server.send_message(msg)
-
-        logger.info(f"Sent email alert to {alert_email_to}")
+        logger.info(f"Sent email alert to {config.to_address}")
 
     def _build_email_body(self, alerts: List[Alert]) -> str:
         """Build HTML email body"""
@@ -441,18 +467,11 @@ class NotificationService:
         Returns:
             True if sent successfully, False otherwise
         """
-        if not self._is_email_configured():
+        config = self._get_smtp_config()
+        if not config:
             return False
 
         try:
-            smtp_host = getattr(self.settings, 'smtp_host')
-            smtp_port = getattr(self.settings, 'smtp_port', 587)
-            smtp_user = getattr(self.settings, 'smtp_user', None)
-            smtp_password = getattr(self.settings, 'smtp_password', None)
-            smtp_from = getattr(self.settings, 'smtp_from')
-            alert_email_to = getattr(self.settings, 'alert_email_to')
-            smtp_use_tls = getattr(self.settings, 'smtp_use_tls', True)
-
             subject = f"DMARC Alert [{severity.upper()}]: {title}"
 
             severity_color = {
@@ -461,6 +480,7 @@ class NotificationService:
                 'info': '#3498db'
             }
 
+            domain_html = f'<div class="domain">Domain: {domain}</div>' if domain else ''
             body = f"""
             <html>
             <head>
@@ -476,27 +496,14 @@ class NotificationService:
                 <div class="alert">
                     <div class="title">{title}</div>
                     <div class="message">{message}</div>
-                    {f'<div class="domain">Domain: {domain}</div>' if domain else ''}
+                    {domain_html}
                 </div>
             </body>
             </html>
             """
 
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = smtp_from
-            msg['To'] = alert_email_to
-            msg['Date'] = datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S +0000')
-            msg.attach(MIMEText(body, 'html'))
-
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                if smtp_use_tls:
-                    server.starttls()
-                if smtp_user and smtp_password:
-                    server.login(smtp_user, smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Sent email alert to {alert_email_to}: {title}")
+            self._send_email(subject, body, config)
+            logger.info(f"Sent email alert to {config.to_address}: {title}")
             return True
 
         except Exception as e:
