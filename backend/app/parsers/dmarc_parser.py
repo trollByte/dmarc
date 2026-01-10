@@ -81,9 +81,12 @@ def decompress_file(data: bytes, filename: str) -> bytes:
     """
     Decompress file if needed (.gz or .zip)
 
+    Uses magic bytes to detect actual content type, not just filename extension.
+    Some files have .gz extension but contain plain XML.
+
     Args:
         data: File content as bytes
-        filename: Original filename to determine compression type
+        filename: Original filename (used for error messages)
 
     Returns:
         Decompressed XML data as bytes
@@ -91,12 +94,20 @@ def decompress_file(data: bytes, filename: str) -> bytes:
     Raises:
         DmarcParseError: If decompression fails
     """
-    filename_lower = filename.lower()
+    if not data:
+        raise DmarcParseError(f"Empty file: {filename}")
 
     try:
-        if filename_lower.endswith('.gz'):
+        # Check magic bytes to detect actual content type
+        # Gzip: 1f 8b
+        # Zip: 50 4b (PK)
+        # XML: 3c (< character) or starts with whitespace then <
+
+        if data[:2] == b'\x1f\x8b':
+            # Actual gzip file
             return gzip.decompress(data)
-        elif filename_lower.endswith('.zip'):
+        elif data[:2] == b'PK':
+            # Actual zip file
             with zipfile.ZipFile(io.BytesIO(data)) as zf:
                 names = zf.namelist()
                 if not names:
@@ -104,7 +115,7 @@ def decompress_file(data: bytes, filename: str) -> bytes:
                 # Read first file in zip
                 return zf.read(names[0])
         else:
-            # Assume raw XML
+            # Assume raw XML (may start with <, whitespace, or BOM)
             return data
     except Exception as e:
         raise DmarcParseError(f"Failed to decompress {filename}: {str(e)}")
