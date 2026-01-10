@@ -128,7 +128,8 @@ def ingest_and_process_task(self, content: bytes, source: str):
     self._db = db
 
     try:
-        processor = ReportProcessor(db)
+        settings = get_settings()
+        processor = ReportProcessor(db, settings.raw_reports_path)
         result = processor.process_report(content, source)
 
         if result:
