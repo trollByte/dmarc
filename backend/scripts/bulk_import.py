@@ -21,7 +21,6 @@ Example:
 
 import os
 import sys
-import gzip
 import argparse
 from pathlib import Path
 from typing import List
@@ -34,23 +33,10 @@ from app.database import SessionLocal
 from app.services.processing import ReportProcessor
 
 
-def is_gzipped(file_path: Path) -> bool:
-    """Check if file is gzipped"""
-    return file_path.suffix.lower() in ['.gz', '.gzip']
-
-
 def read_report_file(file_path: Path) -> bytes:
-    """Read report file, decompressing if needed"""
+    """Read report file as-is (parser handles decompression)"""
     with open(file_path, 'rb') as f:
-        content = f.read()
-
-    if is_gzipped(file_path):
-        try:
-            content = gzip.decompress(content)
-        except Exception as e:
-            print(f"Warning: Failed to decompress {file_path.name}: {e}")
-
-    return content
+        return f.read()
 
 
 def find_report_files(directory: str) -> List[Path]:
