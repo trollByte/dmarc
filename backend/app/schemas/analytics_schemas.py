@@ -161,6 +161,28 @@ class DetectAnomaliesRequest(BaseModel):
     )
 
 
+class DetectAnomaliesWithAlertsRequest(BaseModel):
+    """Request to detect anomalies and create alerts"""
+    days: int = Field(default=7, ge=1, le=90, description="Days of recent data to analyze")
+    threshold: float = Field(
+        default=-0.5, ge=-1.0, le=0.0, description="Anomaly score threshold for WARNING"
+    )
+    critical_threshold: float = Field(
+        default=-0.7, ge=-1.0, le=0.0, description="Anomaly score threshold for CRITICAL"
+    )
+    max_alerts: int = Field(default=10, ge=1, le=50, description="Maximum alerts to create")
+
+
+class DetectAnomaliesWithAlertsResponse(BaseModel):
+    """Response from anomaly detection with alerts"""
+    status: str
+    model_id: Optional[UUID4] = None
+    model_name: Optional[str] = None
+    anomalies_detected: int
+    alerts_created: int
+    top_anomalies: List[Dict[str, Any]] = []
+
+
 # ==================== ML Prediction Schemas ====================
 
 class MLPredictionResponse(BaseModel):

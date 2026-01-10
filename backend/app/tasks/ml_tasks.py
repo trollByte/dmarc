@@ -106,19 +106,30 @@ def train_anomaly_model_task(self, days: int = 90, contamination: float = 0.05):
     time_limit=3600,  # 1 hour
     name="app.tasks.ml_tasks.detect_anomalies_task"
 )
-def detect_anomalies_task(self, days: int = 7, threshold: float = -0.5):
+def detect_anomalies_task(
+    self,
+    days: int = 7,
+    threshold: float = -0.5,
+    critical_threshold: float = -0.7,
+    max_alerts: int = 10
+):
     """
-    Run anomaly detection on recent data.
+    Run anomaly detection on recent data and create alerts.
 
     **Schedule:** Daily (3 AM)
 
     Args:
         days: Number of recent days to analyze (default: 7)
-        threshold: Anomaly score threshold (default: -0.5)
+        threshold: Anomaly score threshold for WARNING (default: -0.5)
+        critical_threshold: Anomaly score threshold for CRITICAL (default: -0.7)
+        max_alerts: Maximum alerts to create per run (default: 10)
 
     Returns:
         Dictionary with detection results
     """
+    from app.services.alerting_v2 import EnhancedAlertService
+    from app.models import AlertType, AlertSeverity
+
     logger.info(f"Starting anomaly detection (days={days}, threshold={threshold})")
 
     try:
@@ -131,7 +142,8 @@ def detect_anomalies_task(self, days: int = 7, threshold: float = -0.5):
             return {
                 "status": "skipped",
                 "reason": "no_model_deployed",
-                "anomalies_detected": 0
+                "anomalies_detected": 0,
+                "alerts_created": 0
             }
 
         # Detect anomalies
@@ -141,18 +153,90 @@ def detect_anomalies_task(self, days: int = 7, threshold: float = -0.5):
             threshold=threshold
         )
 
-        # TODO: Create alerts for high-severity anomalies
-        # This can be enhanced to trigger alerts via EnhancedAlertService
+        # Create alerts for anomalies
+        alert_service = EnhancedAlertService(self.db)
+        geo_service = GeoLocationService(self.db)
+        alerts_created = 0
+
+        # Sort by anomaly score (most anomalous first)
+        sorted_anomalies = sorted(anomalies, key=lambda x: x["anomaly_score"])
+
+        for anomaly in sorted_anomalies[:max_alerts]:
+            score = anomaly["anomaly_score"]
+            ip = anomaly["ip_address"]
+            features = anomaly["features"]
+
+            # Determine severity based on score
+            if score < critical_threshold:
+                severity = AlertSeverity.CRITICAL
+            else:
+                severity = AlertSeverity.WARNING
+
+            # Enrich with geolocation
+            geo_data = geo_service.lookup_ip(ip)
+            location_str = "Unknown location"
+            if geo_data:
+                parts = []
+                if geo_data.get("city"):
+                    parts.append(geo_data["city"])
+                if geo_data.get("country"):
+                    parts.append(geo_data["country"])
+                if parts:
+                    location_str = ", ".join(parts)
+                if geo_data.get("org"):
+                    location_str += f" ({geo_data['org']})"
+
+            # Build alert message
+            title = f"Anomalous IP detected: {ip}"
+            message = (
+                f"ML model detected anomalous behavior from IP {ip}.\n\n"
+                f"Location: {location_str}\n"
+                f"Anomaly Score: {score:.3f}\n"
+                f"Email Volume: {features['volume']:,}\n"
+                f"Failure Rate: {features['failure_rate']:.1f}%\n"
+                f"Unique Domains: {features['unique_domains']}"
+            )
+
+            # Create alert with metadata
+            alert = alert_service.create_alert(
+                alert_type=AlertType.ANOMALY,
+                severity=severity,
+                title=title,
+                message=message,
+                domain=None,  # IP-based, not domain-specific
+                current_value=score,
+                threshold_value=critical_threshold if severity == AlertSeverity.CRITICAL else threshold,
+                metadata={
+                    "ip_address": ip,
+                    "anomaly_score": score,
+                    "features": features,
+                    "geolocation": geo_data,
+                    "model_id": str(deployed_model.id),
+                    "model_name": deployed_model.model_name,
+                    "first_seen": anomaly.get("first_seen"),
+                    "last_seen": anomaly.get("last_seen"),
+                }
+            )
+
+            if alert:
+                alerts_created += 1
+                logger.info(
+                    f"Created {severity.value} alert for anomalous IP {ip} (score: {score:.3f})"
+                )
 
         result = {
             "status": "success",
             "model_id": str(deployed_model.id),
             "model_name": deployed_model.model_name,
             "anomalies_detected": len(anomalies),
-            "top_anomalies": anomalies[:10]  # Top 10 most anomalous
+            "alerts_created": alerts_created,
+            "top_anomalies": sorted_anomalies[:10]
         }
 
-        logger.info(f"Anomaly detection completed: {len(anomalies)} anomalies found")
+        logger.info(
+            f"Anomaly detection completed: {len(anomalies)} anomalies found, "
+            f"{alerts_created} alerts created"
+        )
         return result
 
     except Exception as e:

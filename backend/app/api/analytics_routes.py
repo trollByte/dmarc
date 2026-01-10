@@ -32,6 +32,8 @@ from app.schemas.analytics_schemas import (
     DeployModelResponse,
     AnomaliesResponse,
     DetectAnomaliesRequest,
+    DetectAnomaliesWithAlertsRequest,
+    DetectAnomaliesWithAlertsResponse,
     ModelStatsResponse,
     CacheStatsResponse,
     MLPredictionResponse,
@@ -354,6 +356,123 @@ async def detect_anomalies(
         model_name=deployed_model.model_name if deployed_model else None,
         anomalies_detected=len(anomalies),
         anomalies=anomalies
+    )
+
+
+@router.post(
+    "/anomalies/detect-with-alerts",
+    response_model=DetectAnomaliesWithAlertsResponse,
+    summary="Detect anomalies and create alerts (analyst+)"
+)
+@handle_service_errors("Detection with alerts failed")
+async def detect_anomalies_with_alerts(
+    request: DetectAnomaliesWithAlertsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("analyst")),
+):
+    """
+    Run anomaly detection and automatically create alerts for detected anomalies.
+
+    **Analyst or Admin only.**
+
+    - Detects anomalous IPs using deployed ML model
+    - Creates WARNING alerts for scores below threshold
+    - Creates CRITICAL alerts for scores below critical_threshold
+    - Enriches alerts with geolocation data
+    - Sends notifications via configured channels (Teams, Email, Slack)
+
+    This is the same logic that runs daily at 3 AM via Celery beat.
+    """
+    from app.services.alerting_v2 import EnhancedAlertService
+    from app.models import AlertType, AlertSeverity
+
+    ml_service = MLAnalyticsService(db)
+    geo_service = GeoLocationService(db)
+    alert_service = EnhancedAlertService(db)
+
+    # Check if model is deployed
+    deployed_model = ml_service.get_deployed_model()
+    if not deployed_model:
+        raise HTTPException(
+            status_code=400,
+            detail="No deployed ML model available. Train and deploy a model first."
+        )
+
+    # Detect anomalies
+    anomalies = ml_service.detect_anomalies(
+        model_id=None,
+        days=request.days,
+        threshold=request.threshold
+    )
+
+    # Sort by anomaly score (most anomalous first)
+    sorted_anomalies = sorted(anomalies, key=lambda x: x["anomaly_score"])
+    alerts_created = 0
+
+    for anomaly in sorted_anomalies[:request.max_alerts]:
+        score = anomaly["anomaly_score"]
+        ip = anomaly["ip_address"]
+        features = anomaly["features"]
+
+        # Determine severity
+        if score < request.critical_threshold:
+            severity = AlertSeverity.CRITICAL
+        else:
+            severity = AlertSeverity.WARNING
+
+        # Enrich with geolocation
+        geo_data = geo_service.lookup_ip(ip)
+        location_str = "Unknown location"
+        if geo_data:
+            parts = []
+            if geo_data.get("city"):
+                parts.append(geo_data["city"])
+            if geo_data.get("country"):
+                parts.append(geo_data["country"])
+            if parts:
+                location_str = ", ".join(parts)
+            if geo_data.get("org"):
+                location_str += f" ({geo_data['org']})"
+
+        # Build alert
+        title = f"Anomalous IP detected: {ip}"
+        message = (
+            f"ML model detected anomalous behavior from IP {ip}.\n\n"
+            f"Location: {location_str}\n"
+            f"Anomaly Score: {score:.3f}\n"
+            f"Email Volume: {features['volume']:,}\n"
+            f"Failure Rate: {features['failure_rate']:.1f}%\n"
+            f"Unique Domains: {features['unique_domains']}"
+        )
+
+        alert = alert_service.create_alert(
+            alert_type=AlertType.ANOMALY,
+            severity=severity,
+            title=title,
+            message=message,
+            domain=None,
+            current_value=score,
+            threshold_value=request.critical_threshold if severity == AlertSeverity.CRITICAL else request.threshold,
+            metadata={
+                "ip_address": ip,
+                "anomaly_score": score,
+                "features": features,
+                "geolocation": geo_data,
+                "model_id": str(deployed_model.id),
+                "triggered_by": str(current_user.id),
+            }
+        )
+
+        if alert:
+            alerts_created += 1
+
+    return DetectAnomaliesWithAlertsResponse(
+        status="success",
+        model_id=deployed_model.id,
+        model_name=deployed_model.model_name,
+        anomalies_detected=len(anomalies),
+        alerts_created=alerts_created,
+        top_anomalies=sorted_anomalies[:10]
     )
 
 
