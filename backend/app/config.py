@@ -84,6 +84,22 @@ class Settings(BaseSettings):
     teams_webhook_url: str = ""
     webhook_url: str = ""  # Generic webhook URL
 
+    # Threat Intelligence
+    abuseipdb_api_key: str = ""  # Get free key at https://www.abuseipdb.com/api
+
+    # OAuth / SSO
+    oauth_enabled: bool = False
+    oauth_base_url: str = ""  # e.g., https://your-domain.com (for redirect URIs)
+
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # Microsoft OAuth (Azure AD)
+    microsoft_client_id: str = ""
+    microsoft_client_secret: str = ""
+    microsoft_tenant_id: str = "common"  # Use "common" for multi-tenant, or specific tenant ID
+
     @field_validator('api_keys', mode='before')
     @classmethod
     def parse_api_keys(cls, v):

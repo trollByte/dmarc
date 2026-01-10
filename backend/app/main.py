@@ -13,6 +13,9 @@ from app.api.user_routes import router as user_router
 from app.api.alert_routes import router as alert_router
 from app.api.analytics_routes import router as analytics_router
 from app.api.advisor_routes import router as advisor_router
+from app.api.threat_intel_routes import router as threat_intel_router
+from app.api.dashboard_routes import router as dashboard_router
+from app.api.oauth_routes import router as oauth_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
 from app.error_handlers import register_error_handlers
@@ -85,6 +88,9 @@ app.include_router(user_router)
 app.include_router(alert_router)
 app.include_router(analytics_router)
 app.include_router(advisor_router)
+app.include_router(threat_intel_router)
+app.include_router(dashboard_router)
+app.include_router(oauth_router)
 
 
 @app.get("/")

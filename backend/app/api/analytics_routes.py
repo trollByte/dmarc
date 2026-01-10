@@ -505,3 +505,142 @@ async def get_recent_anomalies(
     ).limit(limit).all()
 
     return [MLPredictionResponse.model_validate(p) for p in predictions]
+
+
+# ==================== Time-series Forecasting ====================
+
+@router.get(
+    "/forecast/volume",
+    summary="Forecast email volume"
+)
+@handle_service_errors("Forecasting failed")
+async def forecast_volume(
+    forecast_days: int = Query(default=14, ge=1, le=30, description="Days to forecast"),
+    history_days: int = Query(default=90, ge=14, le=365, description="Days of history to use"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Forecast future email volumes using exponential smoothing.
+
+    **Features:**
+    - Holt-Winters exponential smoothing
+    - Weekly seasonality detection
+    - Trend analysis
+    - 95% confidence intervals
+
+    **Returns:**
+    - Daily volume predictions
+    - Trend direction and strength
+    - Weekly pattern (if seasonal)
+    - Model accuracy (MAPE)
+    """
+    from app.services.forecasting import ForecastingService
+
+    forecast_service = ForecastingService(db)
+    result = forecast_service.get_anomaly_forecast(
+        forecast_days=forecast_days,
+        history_days=history_days
+    )
+
+    return result
+
+
+@router.get(
+    "/forecast/domain/{domain}",
+    summary="Forecast volume for specific domain"
+)
+@handle_service_errors("Domain forecasting failed")
+async def forecast_domain_volume(
+    domain: str,
+    forecast_days: int = Query(default=14, ge=1, le=30, description="Days to forecast"),
+    history_days: int = Query(default=60, ge=7, le=180, description="Days of history"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Forecast future email volumes for a specific domain.
+
+    Uses simple exponential smoothing for domain-level forecasting.
+    """
+    from app.services.forecasting import ForecastingService
+
+    forecast_service = ForecastingService(db)
+    result = forecast_service.get_domain_forecast(
+        domain=domain,
+        forecast_days=forecast_days,
+        history_days=history_days
+    )
+
+    return result
+
+
+@router.get(
+    "/forecast/summary",
+    summary="Get forecast summary for dashboard"
+)
+@handle_service_errors("Forecast summary failed")
+async def get_forecast_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get a summary of volume forecasts for dashboard display.
+
+    Returns:
+    - Next 7 day predictions
+    - Trend summary
+    - Expected vs. typical volume comparison
+    """
+    from app.services.forecasting import ForecastingService
+
+    forecast_service = ForecastingService(db)
+
+    try:
+        result = forecast_service.forecast_volume(
+            forecast_days=7,
+            history_days=60
+        )
+
+        # Calculate summary stats
+        predicted_volumes = [f.predicted_volume for f in result.forecasts]
+        avg_predicted = sum(predicted_volumes) / len(predicted_volumes) if predicted_volumes else 0
+
+        # Compare to historical
+        volume_change = ((avg_predicted - result.historical_avg) / result.historical_avg * 100) if result.historical_avg > 0 else 0
+
+        return {
+            "forecast_period": "7 days",
+            "predictions": [
+                {
+                    "date": f.date.isoformat(),
+                    "volume": f.predicted_volume,
+                    "is_weekend": f.is_weekend,
+                }
+                for f in result.forecasts
+            ],
+            "summary": {
+                "avg_predicted_volume": round(avg_predicted),
+                "historical_avg_volume": round(result.historical_avg),
+                "volume_change_percent": round(volume_change, 1),
+                "trend": result.trend_direction.value,
+                "trend_strength": round(result.trend_strength, 2),
+            },
+            "model_accuracy_mape": round(result.model_accuracy, 1),
+        }
+
+    except ValueError as e:
+        # Not enough data for forecast
+        return {
+            "forecast_period": "7 days",
+            "predictions": [],
+            "summary": {
+                "error": str(e),
+                "avg_predicted_volume": None,
+                "historical_avg_volume": None,
+                "volume_change_percent": None,
+                "trend": "unknown",
+                "trend_strength": 0,
+            },
+            "model_accuracy_mape": None,
+        }

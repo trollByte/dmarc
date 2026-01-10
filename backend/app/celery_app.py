@@ -24,6 +24,7 @@ celery_app = Celery(
         "app.tasks.processing",
         "app.tasks.alerting",
         "app.tasks.ml_tasks",
+        "app.tasks.advisor_tasks",
     ]
 )
 
@@ -77,6 +78,16 @@ celery_app.conf.beat_schedule = {
     "generate-analytics-cache-daily": {
         "task": "app.tasks.ml_tasks.generate_analytics_cache_task",
         "schedule": crontab(hour=4, minute=0),  # Daily 4 AM
+    },
+    # Advisor: Send weekly report (Monday 8 AM)
+    "send-weekly-advisor-report": {
+        "task": "app.tasks.advisor_tasks.send_weekly_advisor_report",
+        "schedule": crontab(day_of_week=1, hour=8, minute=0),  # Monday 8 AM
+    },
+    # Advisor: Send daily health summary (8 AM, only if critical issues)
+    "send-daily-health-summary": {
+        "task": "app.tasks.advisor_tasks.send_daily_health_summary",
+        "schedule": crontab(hour=8, minute=0),  # Daily 8 AM
     },
 }
 
