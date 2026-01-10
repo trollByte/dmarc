@@ -105,8 +105,14 @@ def print_progress(
 
 def bulk_import_sync(files: List[Path], batch_size: int = 10):
     """Import reports synchronously (no Celery)"""
+    from datetime import datetime
+    from app.services.ingestion import IngestionService
+    from app.config import get_settings
+
     db = SessionLocal()
-    processor = ReportProcessor(db)
+    settings = get_settings()
+    ingestion_service = IngestionService(db)
+    processor = ReportProcessor(db, settings.raw_reports_path)
 
     total = len(files)
     counts = {'success': 0, 'error': 0, 'duplicate': 0}
@@ -117,14 +123,24 @@ def bulk_import_sync(files: List[Path], batch_size: int = 10):
     for i, file_path in enumerate(files, 1):
         try:
             content = read_report_file(file_path)
-            result = processor.process_report(content, str(file_path))
 
-            if result:
-                counts['success'] += 1
-                status = "+"
-            else:
+            # Step 1: Ingest the file
+            was_new, ingested_report = ingestion_service.process_attachment(
+                filename=file_path.name,
+                content=content,
+                message_id=f"bulk-import-{file_path.name}",
+                received_at=datetime.utcnow()
+            )
+
+            if not was_new or not ingested_report:
                 counts['duplicate'] += 1
                 status = "x"
+            else:
+                # Step 2: Process the ingested report
+                processor._process_single_report(ingested_report)
+                db.commit()
+                counts['success'] += 1
+                status = "+"
 
             if i % batch_size == 0 or i == total:
                 print_progress(i, total, file_path, status, start_time, counts, is_sync=True)

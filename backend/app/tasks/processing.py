@@ -122,6 +122,10 @@ def ingest_and_process_task(self, content: bytes, source: str):
     Returns:
         dict: Processing result
     """
+    from datetime import datetime
+    from app.services.ingestion import IngestionService
+    from pathlib import Path
+
     logger.info(f"Ingesting and processing report: {source}")
 
     db = SessionLocal()
@@ -129,15 +133,29 @@ def ingest_and_process_task(self, content: bytes, source: str):
 
     try:
         settings = get_settings()
-        processor = ReportProcessor(db, settings.raw_reports_path)
-        result = processor.process_report(content, source)
 
-        if result:
-            logger.info(f"Successfully processed report: {source}")
-            return {"status": "success", "source": source}
-        else:
+        # Step 1: Ingest the file (save to storage, create IngestedReport)
+        ingestion_service = IngestionService(db)
+        filename = Path(source).name
+
+        was_new, ingested_report = ingestion_service.process_attachment(
+            filename=filename,
+            content=content,
+            message_id=f"bulk-import-{filename}",
+            received_at=datetime.utcnow()
+        )
+
+        if not was_new or not ingested_report:
             logger.info(f"Duplicate report skipped: {source}")
             return {"status": "duplicate", "source": source}
+
+        # Step 2: Process the ingested report
+        processor = ReportProcessor(db, settings.raw_reports_path)
+        processor._process_single_report(ingested_report)
+        db.commit()
+
+        logger.info(f"Successfully processed report: {source}")
+        return {"status": "success", "source": source}
 
     except Exception as e:
         logger.error(f"Error processing report {source}: {str(e)}", exc_info=True)
