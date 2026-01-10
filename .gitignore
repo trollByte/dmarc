@@ -59,3 +59,8 @@ htmlcov/
 *.pid
 *.seed
 *.pid.lock
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.*
+celery-data/
