@@ -24,17 +24,14 @@ depends_on = None
 def upgrade() -> None:
     """Create user authentication tables"""
 
-    # Create UserRole enum type
-    op.execute("CREATE TYPE userrole AS ENUM ('admin', 'analyst', 'viewer')")
-
-    # users table
+    # users table - use String for role to avoid enum type conflicts
     op.create_table(
         'users',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('username', sa.String(50), unique=True, nullable=False, index=True),
         sa.Column('email', sa.String(255), unique=True, nullable=False, index=True),
         sa.Column('hashed_password', sa.String(255), nullable=False),
-        sa.Column('role', sa.Enum('admin', 'analyst', 'viewer', name='userrole'), nullable=False),
+        sa.Column('role', sa.String(20), nullable=False),  # admin, analyst, viewer
         sa.Column('is_active', sa.Boolean(), default=True, nullable=False),
         sa.Column('is_locked', sa.Boolean(), default=False, nullable=False),
         sa.Column('failed_login_attempts', sa.Integer(), default=0, nullable=False),

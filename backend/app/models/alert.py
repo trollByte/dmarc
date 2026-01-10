@@ -7,7 +7,7 @@ Implements:
 - Alert suppressions (time-based, by domain/type/severity)
 """
 
-from sqlalchemy import Column, String, DateTime, Text, Float, Boolean, Integer, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, DateTime, Text, Float, Boolean, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -52,9 +52,9 @@ class AlertHistory(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # Alert identification
-    alert_type = Column(SQLEnum(AlertType), nullable=False, index=True)
-    severity = Column(SQLEnum(AlertSeverity), nullable=False, index=True)
+    # Alert identification - stored as strings, validated by Python enums
+    alert_type = Column(String(50), nullable=False, index=True)
+    severity = Column(String(20), nullable=False, index=True)
 
     # Deduplication fingerprint (SHA256 of: type + domain + metric + threshold)
     fingerprint = Column(String(64), nullable=False, index=True)
@@ -72,7 +72,7 @@ class AlertHistory(Base):
     alert_metadata = Column(JSONB, nullable=True)
 
     # Lifecycle tracking
-    status = Column(SQLEnum(AlertStatus), nullable=False, default=AlertStatus.CREATED, index=True)
+    status = Column(String(20), nullable=False, default=AlertStatus.CREATED.value, index=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
@@ -115,11 +115,11 @@ class AlertRule(Base):
     # Rule identification
     name = Column(String(255), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
-    alert_type = Column(SQLEnum(AlertType), nullable=False, index=True)
+    alert_type = Column(String(50), nullable=False, index=True)
 
     # Rule configuration
     is_enabled = Column(Boolean, default=True, nullable=False, index=True)
-    severity = Column(SQLEnum(AlertSeverity), nullable=False)
+    severity = Column(String(20), nullable=False)
 
     # Threshold conditions (JSON for flexibility)
     # Example: {"failure_rate": {"warning": 10.0, "critical": 25.0}}
@@ -168,8 +168,8 @@ class AlertSuppression(Base):
     is_active = Column(Boolean, default=True, nullable=False, index=True)
 
     # Suppression filters (all are optional, NULL = matches all)
-    alert_type = Column(SQLEnum(AlertType), nullable=True, index=True)
-    severity = Column(SQLEnum(AlertSeverity), nullable=True, index=True)
+    alert_type = Column(String(50), nullable=True, index=True)
+    severity = Column(String(20), nullable=True, index=True)
     domain = Column(String(255), nullable=True, index=True)
 
     # Time-based suppression
@@ -211,17 +211,17 @@ class AlertSuppression(Base):
 
         return True
 
-    def matches_alert(self, alert_type: AlertType, severity: AlertSeverity, domain: str = None) -> bool:
+    def matches_alert(self, alert_type_val: str, severity_val: str, domain: str = None) -> bool:
         """Check if this suppression matches the given alert"""
         if not self.is_suppressing_now():
             return False
 
         # Check alert type
-        if self.alert_type and self.alert_type != alert_type:
+        if self.alert_type and self.alert_type != alert_type_val:
             return False
 
         # Check severity
-        if self.severity and self.severity != severity:
+        if self.severity and self.severity != severity_val:
             return False
 
         # Check domain (exact match or wildcard)

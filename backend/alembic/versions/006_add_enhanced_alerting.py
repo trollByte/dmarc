@@ -24,17 +24,12 @@ depends_on = None
 def upgrade() -> None:
     """Create enhanced alerting tables"""
 
-    # Create enum types
-    op.execute("CREATE TYPE alertseverity AS ENUM ('info', 'warning', 'critical')")
-    op.execute("CREATE TYPE alerttype AS ENUM ('failure_rate', 'volume_spike', 'volume_drop', 'new_source', 'policy_violation', 'anomaly')")
-    op.execute("CREATE TYPE alertstatus AS ENUM ('created', 'acknowledged', 'resolved', 'suppressed')")
-
-    # alert_history table
+    # alert_history table - use String for enum-like columns
     op.create_table(
         'alert_history',
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
-        sa.Column('alert_type', sa.Enum('failure_rate', 'volume_spike', 'volume_drop', 'new_source', 'policy_violation', 'anomaly', name='alerttype'), nullable=False, index=True),
-        sa.Column('severity', sa.Enum('info', 'warning', 'critical', name='alertseverity'), nullable=False, index=True),
+        sa.Column('alert_type', sa.String(50), nullable=False, index=True),
+        sa.Column('severity', sa.String(20), nullable=False, index=True),
         sa.Column('fingerprint', sa.String(64), nullable=False, index=True),
         sa.Column('title', sa.String(500), nullable=False),
         sa.Column('message', sa.Text(), nullable=False),
@@ -42,7 +37,7 @@ def upgrade() -> None:
         sa.Column('current_value', sa.Float(), nullable=True),
         sa.Column('threshold_value', sa.Float(), nullable=True),
         sa.Column('alert_metadata', JSONB, nullable=True),
-        sa.Column('status', sa.Enum('created', 'acknowledged', 'resolved', 'suppressed', name='alertstatus'), nullable=False, index=True),
+        sa.Column('status', sa.String(20), nullable=False, index=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, index=True),
         sa.Column('acknowledged_at', sa.DateTime(), nullable=True),
         sa.Column('acknowledged_by', UUID(as_uuid=True), nullable=True),
@@ -64,9 +59,9 @@ def upgrade() -> None:
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('name', sa.String(255), unique=True, nullable=False, index=True),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('alert_type', sa.Enum('failure_rate', 'volume_spike', 'volume_drop', 'new_source', 'policy_violation', 'anomaly', name='alerttype'), nullable=False, index=True),
+        sa.Column('alert_type', sa.String(50), nullable=False, index=True),
         sa.Column('is_enabled', sa.Boolean(), default=True, nullable=False, index=True),
-        sa.Column('severity', sa.Enum('info', 'warning', 'critical', name='alertseverity'), nullable=False),
+        sa.Column('severity', sa.String(20), nullable=False),
         sa.Column('conditions', JSONB, nullable=False),
         sa.Column('domain_pattern', sa.String(255), nullable=True),
         sa.Column('cooldown_minutes', sa.Integer(), default=60, nullable=False),
@@ -87,8 +82,8 @@ def upgrade() -> None:
         sa.Column('name', sa.String(255), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('is_active', sa.Boolean(), default=True, nullable=False, index=True),
-        sa.Column('alert_type', sa.Enum('failure_rate', 'volume_spike', 'volume_drop', 'new_source', 'policy_violation', 'anomaly', name='alerttype'), nullable=True, index=True),
-        sa.Column('severity', sa.Enum('info', 'warning', 'critical', name='alertseverity'), nullable=True, index=True),
+        sa.Column('alert_type', sa.String(50), nullable=True, index=True),
+        sa.Column('severity', sa.String(20), nullable=True, index=True),
         sa.Column('domain', sa.String(255), nullable=True, index=True),
         sa.Column('starts_at', sa.DateTime(), nullable=True, index=True),
         sa.Column('ends_at', sa.DateTime(), nullable=True, index=True),
@@ -114,8 +109,3 @@ def downgrade() -> None:
     op.drop_table('alert_suppressions')
     op.drop_table('alert_rules')
     op.drop_table('alert_history')
-
-    # Drop enum types
-    op.execute("DROP TYPE alertstatus")
-    op.execute("DROP TYPE alerttype")
-    op.execute("DROP TYPE alertseverity")

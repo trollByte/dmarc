@@ -13,7 +13,7 @@ from sqlalchemy import func
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models import User, Report, Record, Alert
+from app.models import User, DmarcReport as Report, DmarcRecord as Record, AlertHistory as Alert
 from app.services.policy_advisor import PolicyAdvisor
 from app.services.threat_intel import ThreatIntelService, ThreatLevel
 

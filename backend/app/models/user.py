@@ -5,7 +5,7 @@ Implements JWT-based authentication with role-based access control (RBAC).
 Supports both password-based login and API key authentication.
 """
 
-from sqlalchemy import Column, String, DateTime, Boolean, Integer, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -30,8 +30,8 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
 
-    # Role-based access control
-    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.VIEWER)
+    # Role-based access control - stored as string, validated by Python enum
+    role = Column(String(20), nullable=False, default=UserRole.VIEWER.value)
 
     # Account status
     is_active = Column(Boolean, default=True, nullable=False)

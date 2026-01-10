@@ -9,13 +9,19 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.database import Base
-# Import all models for Alembic to track
-from app.models import (
-    IngestedReport, DmarcReport, DmarcRecord,
-    User, UserAPIKey, RefreshToken,
-    AlertHistory, AlertRule, AlertSuppression,
-    GeoLocationCache, MLModel, MLPrediction, AnalyticsCache
-)
+
+# Import models to register them with Base.metadata
+# Note: We import here but migrations manage their own DDL for enum types
+def import_models():
+    """Import all models to register with SQLAlchemy metadata"""
+    from app.models import (
+        IngestedReport, DmarcReport, DmarcRecord,
+        User, UserAPIKey, RefreshToken,
+        AlertHistory, AlertRule, AlertSuppression,
+        GeoLocationCache, MLModel, MLPrediction, AnalyticsCache
+    )
+
+import_models()
 
 # this is the Alembic Config object
 config = context.config
