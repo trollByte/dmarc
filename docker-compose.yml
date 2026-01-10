@@ -40,6 +40,7 @@ services:
       REDIS_URL: redis://redis:6379/0
     volumes:
       - ./backend:/app
+      - ./import_reports:/app/import_reports
       - app_logs:/app/logs
     ports:
       - "8000:8000"
@@ -72,6 +73,7 @@ services:
       CELERY_BROKER_URL: redis://redis:6379/1
     volumes:
       - ./backend:/app
+      - ./import_reports:/app/import_reports
       - app_logs:/app/logs
     depends_on:
       db:
