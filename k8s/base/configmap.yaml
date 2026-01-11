@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dmarc-config
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+data:
+  # Application settings
+  APP_NAME: "DMARC Dashboard"
+  DEBUG: "false"
+  LOG_LEVEL: "INFO"
+  LOG_JSON: "true"
+  ENABLE_REQUEST_LOGGING: "true"
+
+  # Database settings (host/port only, credentials in secret)
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "dmarc"
+
+  # Redis settings
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  CELERY_BROKER_DB: "1"
+
+  # Alert thresholds
+  ALERT_FAILURE_THRESHOLD_WARNING: "10"
+  ALERT_FAILURE_THRESHOLD_CRITICAL: "25"
+  ALERT_VOLUME_SPIKE_THRESHOLD: "50"
+  ALERT_VOLUME_DROP_THRESHOLD: "30"
+
+  # Rate limiting
+  RATE_LIMIT_DEFAULT: "10/second"
+  RATE_LIMIT_EXPORT: "10/minute"
+  RATE_LIMIT_PDF: "5/minute"
+
+  # Security
+  REQUIRE_API_KEY: "true"
+  MAX_FAILED_LOGIN_ATTEMPTS: "5"
+  ACCOUNT_LOCKOUT_DURATION: "30"
+
+  # Cache settings
+  CACHE_TTL: "300"
+  GEOLOCATION_CACHE_DAYS: "90"
+
+  # Celery settings
+  CELERY_WORKER_CONCURRENCY: "4"

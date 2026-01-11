@@ -1,0 +1,261 @@
+# DMARC Dashboard Helm Chart Values
+# Override these values for your environment
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Application configuration
+config:
+  appName: "DMARC Dashboard"
+  debug: false
+  logLevel: "INFO"
+  logJson: true
+  enableRequestLogging: true
+
+  # Alert thresholds
+  alertFailureWarning: 10
+  alertFailureCritical: 25
+  alertVolumeSpikeThreshold: 50
+  alertVolumeDropThreshold: 30
+
+  # Rate limiting
+  rateLimitDefault: "10/second"
+  rateLimitExport: "10/minute"
+  rateLimitPdf: "5/minute"
+
+  # Security
+  requireApiKey: true
+  maxFailedLoginAttempts: 5
+  accountLockoutDuration: 30
+
+  # Cache
+  cacheTtl: 300
+  geolocationCacheDays: 90
+
+# Secrets - OVERRIDE THESE IN PRODUCTION
+secrets:
+  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(64))"
+  jwtSecretKey: "CHANGE_ME_GENERATE_SECURE_SECRET"
+
+  # Database credentials
+  dbUser: "dmarc"
+  dbPassword: "CHANGE_ME_IN_PRODUCTION"
+
+  # Email configuration (optional)
+  emailHost: ""
+  emailUser: ""
+  emailPassword: ""
+  emailPort: "993"
+  emailUseSsl: "true"
+
+  # SMTP for alerts (optional)
+  smtpHost: ""
+  smtpPort: "587"
+  smtpUser: ""
+  smtpPassword: ""
+  smtpUseTls: "true"
+
+  # Notification webhooks (optional)
+  slackWebhookUrl: ""
+  teamsWebhookUrl: ""
+  discordWebhookUrl: ""
+
+  # Threat intelligence APIs (optional)
+  abuseipdbApiKey: ""
+  virustotalApiKey: ""
+
+  # OAuth (optional)
+  googleClientId: ""
+  googleClientSecret: ""
+  microsoftClientId: ""
+  microsoftClientSecret: ""
+
+# Backend API
+backend:
+  replicaCount: 2
+  image:
+    repository: dmarc-backend
+    tag: latest
+    pullPolicy: Always
+
+  service:
+    type: ClusterIP
+    port: 8000
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # Pod annotations for Prometheus scraping
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+
+# Celery Worker
+celeryWorker:
+  replicaCount: 2
+  concurrency: 4
+
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+# Celery Beat Scheduler
+celeryBeat:
+  enabled: true
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# Frontend / Nginx
+frontend:
+  replicaCount: 2
+  image:
+    repository: nginx
+    tag: 1.25-alpine
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: dmarc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dmarc-tls-secret
+      hosts:
+        - dmarc.example.com
+
+# PostgreSQL (Bitnami chart)
+postgresql:
+  enabled: true
+  auth:
+    username: dmarc
+    password: "CHANGE_ME_IN_PRODUCTION"
+    database: dmarc
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+  # For external database, set enabled: false and configure:
+  # externalHost: ""
+  # externalPort: 5432
+
+# Redis (Bitnami chart)
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+  # For external Redis, set enabled: false and configure:
+  # externalHost: ""
+  # externalPort: 6379
+
+# Flower - Celery monitoring
+flower:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 5555
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "250m"
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  readOnlyRootFilesystem: true
+
+# Network Policy
+networkPolicy:
+  enabled: true
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

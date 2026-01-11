@@ -1,0 +1,31 @@
+apiVersion: v2
+name: dmarc-dashboard
+description: Enterprise DMARC Analytics Platform - Helm Chart
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+
+home: https://github.com/your-org/dmarc-dashboard
+sources:
+  - https://github.com/your-org/dmarc-dashboard
+
+maintainers:
+  - name: Your Team
+    email: team@example.com
+
+keywords:
+  - dmarc
+  - email
+  - security
+  - analytics
+  - monitoring
+
+dependencies:
+  - name: postgresql
+    version: "13.2.24"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.6.1"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

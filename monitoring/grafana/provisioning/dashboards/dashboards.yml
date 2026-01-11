@@ -1,0 +1,16 @@
+# Grafana Dashboard Provisioning
+# This file configures automatic dashboard loading
+
+apiVersion: 1
+
+providers:
+  - name: 'DMARC Dashboard'
+    orgId: 1
+    folder: 'DMARC'
+    folderUid: 'dmarc'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

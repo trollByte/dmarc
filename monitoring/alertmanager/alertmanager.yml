@@ -1,0 +1,127 @@
+# Alertmanager Configuration for DMARC Dashboard
+# Documentation: https://prometheus.io/docs/alerting/latest/configuration/
+
+global:
+  # Global SMTP settings for email notifications
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'alertmanager@example.com'
+  smtp_auth_password: 'your-app-password'
+  smtp_require_tls: true
+
+  # Slack webhook URL (if using Slack)
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+  # Default resolve timeout
+  resolve_timeout: 5m
+
+# Route tree for alert routing
+route:
+  # Default receiver
+  receiver: 'default-receiver'
+
+  # Group alerts by these labels
+  group_by: ['alertname', 'severity', 'job']
+
+  # How long to wait before sending initial notification
+  group_wait: 30s
+
+  # How long to wait before sending notification for new alerts in group
+  group_interval: 5m
+
+  # How long to wait before resending notification
+  repeat_interval: 4h
+
+  # Child routes for specific alert types
+  routes:
+    # Critical alerts - immediate notification
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+      group_wait: 1m
+      repeat_interval: 4h
+
+    # DMARC-specific alerts
+    - match:
+        job: dmarc-backend
+      receiver: 'dmarc-alerts'
+
+# Receivers define notification destinations
+receivers:
+  # Default receiver - email only
+  - name: 'default-receiver'
+    email_configs:
+      - to: 'ops-team@example.com'
+        send_resolved: true
+        headers:
+          Subject: '[DMARC Alert] {{ .GroupLabels.alertname }}'
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'oncall@example.com'
+        send_resolved: true
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-critical'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+    # Webhook for custom integrations
+    webhook_configs:
+      - url: 'http://backend:8000/api/webhooks/alertmanager'
+        send_resolved: true
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    email_configs:
+      - to: 'ops-team@example.com'
+        send_resolved: true
+        headers:
+          Subject: '[WARNING] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#alerts-warning'
+        send_resolved: true
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
+
+  # DMARC-specific alerts
+  - name: 'dmarc-alerts'
+    email_configs:
+      - to: 'dmarc-admins@example.com'
+        send_resolved: true
+        headers:
+          Subject: '[DMARC] {{ .GroupLabels.alertname }}'
+    slack_configs:
+      - channel: '#dmarc-alerts'
+        send_resolved: true
+
+# Inhibition rules - suppress alerts based on other alerts
+inhibit_rules:
+  # If critical alert is firing, suppress warning for same alertname
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'job']
+
+  # If backend is down, suppress all other backend alerts
+  - source_match:
+      alertname: 'DMARCBackendDown'
+    target_match:
+      job: 'dmarc-backend'
+    equal: ['job']
+
+# Templates for notification formatting (optional)
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

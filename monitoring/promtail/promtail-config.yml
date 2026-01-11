@@ -1,0 +1,106 @@
+# Promtail Configuration for DMARC Dashboard
+# Collects logs and ships them to Loki
+# Documentation: https://grafana.com/docs/loki/latest/clients/promtail/configuration/
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: dmarc
+
+scrape_configs:
+  # DMARC Application Logs
+  - job_name: dmarc-app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: dmarc-app
+          __path__: /var/log/dmarc/*.log
+    pipeline_stages:
+      # Parse JSON logs
+      - json:
+          expressions:
+            level: level
+            timestamp: timestamp
+            message: message
+            logger: logger
+            module: module
+            function: function
+            request_id: request_id
+            duration_ms: duration_ms
+      # Set log level label
+      - labels:
+          level:
+          logger:
+          module:
+      # Set timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      # Drop debug logs in production (optional)
+      # - match:
+      #     selector: '{level="DEBUG"}'
+      #     action: drop
+
+  # Docker Container Logs
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only keep DMARC containers
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(dmarc-.*)'
+        action: keep
+      # Extract container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      # Add service label
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/dmarc-(.*)'
+        target_label: service
+    pipeline_stages:
+      # Try to parse as JSON first
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+      # Fall back to regex for non-JSON logs
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) - (?P<logger>\S+) - (?P<level>\w+) - (?P<message>.*)$'
+      # Set labels
+      - labels:
+          level:
+          logger:
+      # Parse timestamp
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02 15:04:05"
+          fallback_formats:
+            - RFC3339
+
+  # Celery Worker Logs
+  - job_name: celery
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: celery
+          __path__: /var/log/dmarc/celery*.log
+    pipeline_stages:
+      - regex:
+          expression: '^\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}): (?P<level>\w+)/(?P<process>\w+)\] (?P<message>.*)$'
+      - labels:
+          level:
+          process:
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02 15:04:05,000"

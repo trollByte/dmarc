@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: dmarc-dashboard
+
+namespace: dmarc
+
+# Common labels for all resources
+commonLabels:
+  app.kubernetes.io/part-of: dmarc-dashboard
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - postgres.yaml
+  - redis.yaml
+  - backend.yaml
+  - celery.yaml
+  - frontend.yaml
+  - ingress.yaml
+
+# Image configuration - override in overlays
+images:
+  - name: dmarc-backend
+    newName: your-registry/dmarc-backend
+    newTag: latest
+
+# ConfigMap generator for frontend files
+configMapGenerator:
+  - name: frontend-files
+    files:
+      - ../../frontend/index.html
+      - ../../frontend/css/styles.css
+      - ../../frontend/js/app.js
+    options:
+      disableNameSuffixHash: true

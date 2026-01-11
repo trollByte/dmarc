@@ -1,0 +1,224 @@
+# Prometheus Alert Rules for DMARC Dashboard
+# Documentation: https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/
+
+groups:
+  - name: dmarc-dashboard
+    rules:
+      # =======================================================================
+      # Application Health Alerts
+      # =======================================================================
+      - alert: DMARCBackendDown
+        expr: up{job="dmarc-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DMARC Backend is down"
+          description: "The DMARC Dashboard backend has been down for more than 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status_code=~"5.."}[5m])) /
+          sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP error rate detected"
+          description: "More than 5% of requests are returning 5xx errors."
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency detected"
+          description: "95th percentile latency is above 2 seconds."
+
+      # =======================================================================
+      # Database Alerts
+      # =======================================================================
+      - alert: DatabaseConnectionPoolExhausted
+        expr: db_connections_active >= 45
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection pool nearly exhausted"
+          description: "Active database connections are at {{ $value }}, approaching pool limit."
+
+      - alert: PostgreSQLDown
+        expr: up{job="postgresql"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database has been unreachable for more than 1 minute."
+
+      # =======================================================================
+      # Redis/Cache Alerts
+      # =======================================================================
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache has been unreachable for more than 1 minute."
+
+      - alert: LowCacheHitRate
+        expr: |
+          sum(rate(cache_hits_total[5m])) /
+          (sum(rate(cache_hits_total[5m])) + sum(rate(cache_misses_total[5m]))) < 0.8
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate has dropped below 80%."
+
+      # =======================================================================
+      # Celery/Task Queue Alerts
+      # =======================================================================
+      - alert: CeleryWorkerDown
+        expr: flower_worker_online == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No Celery workers available"
+          description: "All Celery workers have been offline for more than 2 minutes."
+
+      - alert: HighTaskFailureRate
+        expr: |
+          sum(rate(celery_tasks_total{status="failed"}[15m])) /
+          sum(rate(celery_tasks_total[15m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Celery task failure rate"
+          description: "More than 10% of Celery tasks are failing."
+
+      - alert: TaskQueueBacklog
+        expr: celery_queue_length > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery task queue backlog"
+          description: "There are {{ $value }} tasks waiting in the queue."
+
+      # =======================================================================
+      # DMARC Business Alerts
+      # =======================================================================
+      - alert: NoReportsProcessed
+        expr: |
+          sum(increase(dmarc_reports_processed_total{status="success"}[1h])) == 0
+        for: 2h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No DMARC reports processed"
+          description: "No DMARC reports have been successfully processed in the last 2 hours."
+
+      - alert: HighReportFailureRate
+        expr: |
+          sum(rate(dmarc_reports_processed_total{status="failed"}[1h])) /
+          sum(rate(dmarc_reports_processed_total[1h])) > 0.2
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High DMARC report processing failure rate"
+          description: "More than 20% of DMARC reports are failing to process."
+
+      - alert: HighAnomalyDetectionRate
+        expr: |
+          sum(increase(anomalies_detected_total[1h])) > 50
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High anomaly detection rate"
+          description: "{{ $value }} anomalies detected in the last hour."
+
+      - alert: ManyActiveAlerts
+        expr: sum(alerts_active) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Many active DMARC alerts"
+          description: "There are {{ $value }} active alerts that need attention."
+
+      # =======================================================================
+      # Infrastructure Alerts
+      # =======================================================================
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% on {{ $labels.instance }}."
+
+      - alert: HighMemoryUsage
+        expr: |
+          (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) /
+          node_memory_MemTotal_bytes * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 85% on {{ $labels.instance }}."
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{fstype!="tmpfs"} /
+          node_filesystem_size_bytes{fstype!="tmpfs"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 15% on {{ $labels.instance }} ({{ $labels.mountpoint }})."
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (node_filesystem_avail_bytes{fstype!="tmpfs"} /
+          node_filesystem_size_bytes{fstype!="tmpfs"}) * 100 < 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space"
+          description: "Disk space is below 5% on {{ $labels.instance }} ({{ $labels.mountpoint }})."
+
+  - name: ssl-certificates
+    rules:
+      - alert: SSLCertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate will expire in less than 30 days."
+
+      - alert: SSLCertificateExpired
+        expr: probe_ssl_earliest_cert_expiry - time() < 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL certificate expired"
+          description: "SSL certificate has expired!"

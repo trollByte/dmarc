@@ -1,0 +1,175 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dmarc-dashboard.fullname" . }}-celery-worker
+  labels:
+    {{- include "dmarc-dashboard.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery-worker
+spec:
+  {{- if not .Values.celeryWorker.autoscaling.enabled }}
+  replicas: {{ .Values.celeryWorker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "dmarc-dashboard.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: celery-worker
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "dmarc-dashboard.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: celery-worker
+    spec:
+      serviceAccountName: {{ include "dmarc-dashboard.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "dmarc-dashboard.fullname" . }}-redis-master 6379; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+      containers:
+        - name: celery-worker
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - celery_worker
+            - worker
+            - --loglevel=info
+            - --concurrency={{ .Values.celeryWorker.concurrency }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "dmarc-dashboard.fullname" . }}-config
+            - secretRef:
+                name: {{ include "dmarc-dashboard.fullname" . }}-secrets
+          env:
+            - name: DATABASE_URL
+              value: {{ include "dmarc-dashboard.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "dmarc-dashboard.redisUrl" . | quote }}
+            - name: CELERY_BROKER_URL
+              value: {{ include "dmarc-dashboard.celeryBrokerUrl" . | quote }}
+          resources:
+            {{- toYaml .Values.celeryWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /app/logs
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+{{- if .Values.celeryWorker.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "dmarc-dashboard.fullname" . }}-celery-worker
+  labels:
+    {{- include "dmarc-dashboard.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "dmarc-dashboard.fullname" . }}-celery-worker
+  minReplicas: {{ .Values.celeryWorker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.celeryWorker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.celeryWorker.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+---
+{{- if .Values.celeryBeat.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dmarc-dashboard.fullname" . }}-celery-beat
+  labels:
+    {{- include "dmarc-dashboard.labels" . | nindent 4 }}
+    app.kubernetes.io/component: celery-beat
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "dmarc-dashboard.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: celery-beat
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "dmarc-dashboard.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: celery-beat
+    spec:
+      serviceAccountName: {{ include "dmarc-dashboard.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-redis
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "dmarc-dashboard.fullname" . }}-redis-master 6379; do
+                echo "Waiting for Redis..."
+                sleep 2
+              done
+      containers:
+        - name: celery-beat
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command:
+            - celery
+            - -A
+            - celery_beat
+            - beat
+            - --loglevel=info
+          envFrom:
+            - configMapRef:
+                name: {{ include "dmarc-dashboard.fullname" . }}-config
+            - secretRef:
+                name: {{ include "dmarc-dashboard.fullname" . }}-secrets
+          env:
+            - name: DATABASE_URL
+              value: {{ include "dmarc-dashboard.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "dmarc-dashboard.redisUrl" . | quote }}
+            - name: CELERY_BROKER_URL
+              value: {{ include "dmarc-dashboard.celeryBrokerUrl" . | quote }}
+          resources:
+            {{- toYaml .Values.celeryBeat.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: beat-schedule
+              mountPath: /app/celery-data
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: beat-schedule
+          emptyDir: {}
+{{- end }}
