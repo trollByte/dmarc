@@ -5,8 +5,8 @@ Implements JWT-based authentication with role-based access control (RBAC).
 Supports both password-based login and API key authentication.
 """
 
-from sqlalchemy import Column, String, DateTime, Boolean, Integer, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, DateTime, Boolean, Integer, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -37,6 +37,12 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     is_locked = Column(Boolean, default=False, nullable=False)
     failed_login_attempts = Column(Integer, default=0, nullable=False)
+
+    # Two-Factor Authentication (TOTP)
+    totp_secret = Column(String(32), nullable=True)  # Encrypted TOTP secret
+    totp_enabled = Column(Boolean, default=False, nullable=False)
+    totp_backup_codes = Column(JSONB, nullable=True)  # Hashed backup codes
+    totp_verified_at = Column(DateTime, nullable=True)  # When 2FA was verified
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -78,6 +84,34 @@ class UserAPIKey(Base):
 
     def __repr__(self):
         return f"<UserAPIKey(id={self.id}, key_name={self.key_name}, prefix={self.key_prefix})>"
+
+
+class PasswordResetToken(Base):
+    """Password reset tokens for self-service password recovery"""
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Token hash (SHA256) - never store plaintext
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+
+    # Token metadata
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    # Client information (for audit trail)
+    request_ip = Column(String(45), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("User", backref="password_reset_tokens")
+
+    def __repr__(self):
+        return f"<PasswordResetToken(id={self.id}, user_id={self.user_id}, used={self.used})>"
 
 
 class RefreshToken(Base):

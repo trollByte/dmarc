@@ -16,6 +16,8 @@ class LoginRequest(BaseModel):
     """Login request with username/email and password"""
     username: str = Field(..., description="Username or email address")
     password: str = Field(..., description="Password")
+    totp_code: Optional[str] = Field(None, min_length=6, max_length=6, description="6-digit TOTP code (if 2FA enabled)")
+    backup_code: Optional[str] = Field(None, description="Backup code (if 2FA enabled, format: XXXX-XXXX)")
 
 
 class TokenResponse(BaseModel):
@@ -24,6 +26,7 @@ class TokenResponse(BaseModel):
     refresh_token: str = Field(..., description="JWT refresh token (7 days)")
     token_type: str = Field(default="bearer", description="Token type")
     expires_in: int = Field(..., description="Access token expiration in seconds")
+    requires_2fa: bool = Field(default=False, description="Whether 2FA verification is required")
 
 
 class RefreshTokenRequest(BaseModel):
@@ -63,6 +66,28 @@ class UserChangePassword(BaseModel):
     """Schema for changing user password"""
     current_password: str = Field(..., description="Current password")
     new_password: str = Field(..., min_length=12, description="New password (min 12 chars)")
+
+
+class PasswordResetRequest(BaseModel):
+    """Request password reset via email"""
+    email: EmailStr = Field(..., description="Email address associated with the account")
+
+
+class PasswordResetValidate(BaseModel):
+    """Validate password reset token"""
+    token: str = Field(..., description="Password reset token from email")
+
+
+class PasswordResetConfirm(BaseModel):
+    """Confirm password reset with new password"""
+    token: str = Field(..., description="Password reset token from email")
+    new_password: str = Field(..., min_length=12, description="New password (min 12 chars)")
+
+
+class PasswordResetResponse(BaseModel):
+    """Password reset response"""
+    message: str = Field(..., description="Status message")
+    success: bool = Field(..., description="Whether the operation succeeded")
 
 
 class UserResponse(UserBase):

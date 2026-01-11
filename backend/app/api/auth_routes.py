@@ -16,6 +16,8 @@ from app.database import get_db
 from app.models import User
 from app.config import get_settings
 from app.services.auth_service import AuthService
+from app.services.password_reset_service import PasswordResetService, PasswordResetError
+from app.services.totp_service import TOTPService
 from app.dependencies.auth import get_current_user
 from app.schemas.auth_schemas import (
     LoginRequest,
@@ -23,6 +25,10 @@ from app.schemas.auth_schemas import (
     RefreshTokenRequest,
     AccessTokenResponse,
     CurrentUserContext,
+    PasswordResetRequest,
+    PasswordResetValidate,
+    PasswordResetConfirm,
+    PasswordResetResponse,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -86,6 +92,32 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Account is locked due to too many failed login attempts. Contact administrator."
         )
+
+    # Check 2FA if enabled
+    if user.totp_enabled:
+        totp_service = TOTPService(db)
+
+        # Check if TOTP code provided
+        if credentials.totp_code:
+            if not totp_service.verify_code(user, credentials.totp_code):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid two-factor authentication code"
+                )
+        # Check if backup code provided
+        elif credentials.backup_code:
+            if not totp_service.verify_backup_code(user, credentials.backup_code):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid backup code"
+                )
+        else:
+            # Return a response indicating 2FA is required
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Two-factor authentication required",
+                headers={"X-2FA-Required": "true"}
+            )
 
     # Create token pair
     access_token, refresh_token = AuthService.create_token_pair(user)
@@ -290,3 +322,163 @@ async def get_current_user_info(
     ```
     """
     return CurrentUserContext.from_user(current_user)
+
+
+# ==================== Password Reset Endpoints ====================
+
+@router.post(
+    "/password-reset/request",
+    response_model=PasswordResetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request password reset"
+)
+async def request_password_reset(
+    request: Request,
+    reset_request: PasswordResetRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Request a password reset email.
+
+    **Security Notes:**
+    - Always returns success to prevent email enumeration
+    - Reset link expires in 1 hour
+    - Only one active reset token per user
+
+    **Usage:**
+    ```
+    POST /auth/password-reset/request
+    {
+        "email": "user@example.com"
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+        "success": true,
+        "message": "If an account exists with this email, a reset link has been sent."
+    }
+    ```
+    """
+    client_ip = request.client.host if request.client else None
+
+    service = PasswordResetService(db)
+    success, token = service.request_reset(
+        email=reset_request.email,
+        request_ip=client_ip
+    )
+
+    # If we have a token, send reset email
+    if token:
+        # In production, this would send a real email
+        reset_url_base = f"{settings.frontend_url}/reset-password"
+        service.send_reset_email(
+            email=reset_request.email,
+            reset_token=token,
+            reset_url_base=reset_url_base
+        )
+
+    # Always return same message to prevent email enumeration
+    return PasswordResetResponse(
+        success=True,
+        message="If an account exists with this email, a reset link has been sent."
+    )
+
+
+@router.post(
+    "/password-reset/validate",
+    response_model=PasswordResetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Validate password reset token"
+)
+async def validate_reset_token(
+    validate_request: PasswordResetValidate,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate a password reset token.
+
+    **Usage:**
+    ```
+    POST /auth/password-reset/validate
+    {
+        "token": "<reset_token_from_email>"
+    }
+    ```
+
+    **Response:**
+    - 200: Token is valid
+    - 400: Token is invalid or expired
+    """
+    service = PasswordResetService(db)
+    user = service.validate_token(validate_request.token)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+
+    return PasswordResetResponse(
+        success=True,
+        message="Token is valid"
+    )
+
+
+@router.post(
+    "/password-reset/confirm",
+    response_model=PasswordResetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset password with token"
+)
+async def confirm_password_reset(
+    confirm_request: PasswordResetConfirm,
+    db: Session = Depends(get_db)
+):
+    """
+    Reset password using the reset token.
+
+    **Password Requirements:**
+    - Minimum 12 characters
+    - Must contain uppercase letter
+    - Must contain lowercase letter
+    - Must contain digit
+    - Must contain special character
+
+    **Usage:**
+    ```
+    POST /auth/password-reset/confirm
+    {
+        "token": "<reset_token_from_email>",
+        "new_password": "NewSecurePassword123!"
+    }
+    ```
+
+    **What happens:**
+    - Password is updated
+    - Account is unlocked (if locked)
+    - All existing sessions are invalidated
+    - User must login with new password
+
+    **Response:**
+    - 200: Password reset successful
+    - 400: Invalid token or password policy violation
+    """
+    service = PasswordResetService(db)
+
+    try:
+        service.reset_password(
+            token=confirm_request.token,
+            new_password=confirm_request.new_password
+        )
+    except PasswordResetError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    return PasswordResetResponse(
+        success=True,
+        message="Password has been reset successfully. Please login with your new password."
+    )

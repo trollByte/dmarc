@@ -86,6 +86,10 @@ class Settings(BaseSettings):
 
     # Threat Intelligence
     abuseipdb_api_key: str = ""  # Get free key at https://www.abuseipdb.com/api
+    virustotal_api_key: str = ""  # Get free key at https://www.virustotal.com/gui/my-apikey
+
+    # Frontend URL (for password reset links, etc.)
+    frontend_url: str = "http://localhost:3000"  # Override in production
 
     # OAuth / SSO
     oauth_enabled: bool = False

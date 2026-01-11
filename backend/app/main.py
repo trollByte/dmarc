@@ -16,6 +16,18 @@ from app.api.advisor_routes import router as advisor_router
 from app.api.threat_intel_routes import router as threat_intel_router
 from app.api.dashboard_routes import router as dashboard_router
 from app.api.oauth_routes import router as oauth_router
+from app.api.export_routes import router as export_router
+from app.api.totp_routes import router as totp_router
+from app.api.audit_routes import router as audit_router
+from app.api.retention_routes import router as retention_router
+from app.api.generator_routes import router as generator_router
+from app.api.webhook_routes import router as webhook_router
+from app.api.dns_monitor_routes import router as dns_monitor_router
+from app.api.mta_sts_routes import router as mta_sts_router
+from app.api.tls_rpt_routes import router as tls_rpt_router
+from app.api.bimi_routes import router as bimi_router
+from app.api.scheduled_reports_routes import router as scheduled_reports_router
+from app.api.saml_routes import router as saml_router
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
 from app.error_handlers import register_error_handlers
@@ -91,6 +103,18 @@ app.include_router(advisor_router)
 app.include_router(threat_intel_router)
 app.include_router(dashboard_router)
 app.include_router(oauth_router)
+app.include_router(export_router)
+app.include_router(totp_router)
+app.include_router(audit_router)
+app.include_router(retention_router)
+app.include_router(generator_router)
+app.include_router(webhook_router)
+app.include_router(dns_monitor_router)
+app.include_router(mta_sts_router)
+app.include_router(tls_rpt_router)
+app.include_router(bimi_router)
+app.include_router(scheduled_reports_router)
+app.include_router(saml_router)
 
 
 @app.get("/")
