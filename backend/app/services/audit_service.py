@@ -40,7 +40,7 @@ class AuditService:
         description: Optional[str] = None,
         old_value: Optional[Dict] = None,
         new_value: Optional[Dict] = None,
-        metadata: Optional[Dict] = None,
+        extra_data: Optional[Dict] = None,
         request_method: Optional[str] = None,
         request_path: Optional[str] = None,
         response_status: Optional[int] = None,
@@ -60,7 +60,7 @@ class AuditService:
             description: Human-readable description
             old_value: Previous state (for updates)
             new_value: New state (for updates)
-            metadata: Additional context
+            extra_data: Additional context
             request_method: HTTP method
             request_path: Request path
             response_status: HTTP response status
@@ -82,7 +82,7 @@ class AuditService:
             description=description,
             old_value=old_value,
             new_value=new_value,
-            metadata=metadata,
+            extra_data=extra_data,
             request_method=request_method,
             request_path=request_path,
             response_status=response_status,
@@ -179,7 +179,7 @@ class AuditService:
             user=user,
             ip_address=ip_address,
             description=f"Exported {export_type}",
-            metadata={"export_type": export_type, "filters": filters},
+            extra_data={"export_type": export_type, "filters": filters},
         )
 
     def get_logs(

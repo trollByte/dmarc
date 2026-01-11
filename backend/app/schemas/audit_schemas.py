@@ -19,7 +19,7 @@ class AuditLogEntry(BaseModel):
     target_type: Optional[str] = None
     target_id: Optional[str] = None
     description: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None
     request_method: Optional[str] = None
     request_path: Optional[str] = None
     response_status: Optional[int] = None
@@ -60,7 +60,7 @@ class AuditLogDetailResponse(BaseModel):
     description: Optional[str] = None
     old_value: Optional[Dict[str, Any]] = None
     new_value: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
+    extra_data: Optional[Dict[str, Any]] = None
     request_method: Optional[str] = None
     request_path: Optional[str] = None
     response_status: Optional[int] = None

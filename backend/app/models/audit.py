@@ -101,7 +101,7 @@ class AuditLog(Base):
     description = Column(Text, nullable=True)
     old_value = Column(JSONB, nullable=True)  # Previous state (for updates)
     new_value = Column(JSONB, nullable=True)  # New state (for updates)
-    metadata = Column(JSONB, nullable=True)  # Additional context
+    extra_data = Column(JSONB, nullable=True)  # Additional context
 
     # Request information
     request_method = Column(String(10), nullable=True)

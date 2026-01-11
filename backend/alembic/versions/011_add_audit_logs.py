@@ -39,7 +39,7 @@ def upgrade() -> None:
         sa.Column('description', sa.Text(), nullable=True),
         sa.Column('old_value', JSONB, nullable=True),
         sa.Column('new_value', JSONB, nullable=True),
-        sa.Column('metadata', JSONB, nullable=True),
+        sa.Column('extra_data', JSONB, nullable=True),
         sa.Column('request_method', sa.String(10), nullable=True),
         sa.Column('request_path', sa.String(500), nullable=True),
         sa.Column('response_status', sa.Integer(), nullable=True),
