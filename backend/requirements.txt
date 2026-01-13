@@ -32,6 +32,7 @@ bcrypt==4.1.2
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pyotp==2.9.0
+qrcode[pil]==7.4.2
 
 # ML & Analytics
 scikit-learn==1.4.0
