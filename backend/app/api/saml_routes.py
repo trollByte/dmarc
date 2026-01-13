@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User
-from app.dependencies.auth import get_current_user, require_role, create_access_token
+from app.dependencies.auth import get_current_user, require_role
+from app.services.auth_service import AuthService
 from app.services.saml_service import SAMLService, NameIDFormat
 
 logger = logging.getLogger(__name__)
@@ -379,17 +380,22 @@ async def assertion_consumer_service(
 
     # Generate JWT token
     if result.get("user_id"):
-        token = create_access_token(
-            data={"sub": result["email"], "user_id": result["user_id"]}
-        )
+        # Get user from database to get role
+        user = db.query(User).filter(User.id == result["user_id"]).first()
+        if user:
+            token = AuthService.create_access_token(
+                user_id=str(user.id),
+                username=user.username,
+                role=user.role
+            )
 
-        # Redirect to frontend with token
-        redirect_url = RelayState or "/"
-        separator = "&" if "?" in redirect_url else "?"
-        return RedirectResponse(
-            url=f"{redirect_url}{separator}token={token}",
-            status_code=status.HTTP_302_FOUND,
-        )
+            # Redirect to frontend with token
+            redirect_url = RelayState or "/"
+            separator = "&" if "?" in redirect_url else "?"
+            return RedirectResponse(
+                url=f"{redirect_url}{separator}token={token}",
+                status_code=status.HTTP_302_FOUND,
+            )
 
     return result
 
