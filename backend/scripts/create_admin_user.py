@@ -153,7 +153,7 @@ def create_admin_user():
         print(f"User ID:  {admin_user.id}")
         print(f"Username: {admin_user.username}")
         print(f"Email:    {admin_user.email}")
-        print(f"Role:     {admin_user.role.value}")
+        print(f"Role:     {admin_user.role.value if hasattr(admin_user.role, 'value') else admin_user.role}")
         print()
         print("You can now login with these credentials:")
         print(f"  POST /auth/login")
