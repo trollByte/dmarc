@@ -22,11 +22,220 @@ let currentFilters = {
 // Upload modal state
 let selectedFiles = [];
 
+// Error tracking for retry functionality
+const componentErrors = new Map();
+
+// ==========================================
+// THEME MANAGEMENT
+// ==========================================
+
+function initTheme() {
+    const savedTheme = localStorage.getItem('dmarc-theme') || 'light';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+}
+
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('dmarc-theme', newTheme);
+    updateThemeIcon(newTheme);
+
+    // Update Chart.js colors for dark mode
+    updateChartTheme(newTheme);
+}
+
+function updateThemeIcon(theme) {
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        themeToggle.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+    }
+}
+
+function updateChartTheme(theme) {
+    const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+    const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+    // Update all existing charts
+    [timelineChart, domainChart, sourceIpChart, dispositionChart,
+     alignmentChart, complianceChart, failureTrendChart, topOrganizationsChart].forEach(chart => {
+        if (chart) {
+            if (chart.options.scales?.x) {
+                chart.options.scales.x.ticks = { ...chart.options.scales.x.ticks, color: textColor };
+                chart.options.scales.x.grid = { ...chart.options.scales.x.grid, color: gridColor };
+            }
+            if (chart.options.scales?.y) {
+                chart.options.scales.y.ticks = { ...chart.options.scales.y.ticks, color: textColor };
+                chart.options.scales.y.grid = { ...chart.options.scales.y.grid, color: gridColor };
+            }
+            if (chart.options.plugins?.legend) {
+                chart.options.plugins.legend.labels = { ...chart.options.plugins.legend.labels, color: textColor };
+            }
+            chart.update();
+        }
+    });
+}
+
+// ==========================================
+// SKELETON LOADING STATES (using safe DOM methods)
+// ==========================================
+
+function createSkeletonElement(classes) {
+    const div = document.createElement('div');
+    classes.forEach(cls => div.classList.add(cls));
+    return div;
+}
+
+function showStatsSkeleton() {
+    ['totalReports', 'passRate', 'failRate', 'totalMessages'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.textContent = '';
+            el.appendChild(createSkeletonElement(['skeleton', 'skeleton-stat']));
+        }
+    });
+}
+
+function showTableSkeleton() {
+    const tbody = document.getElementById('reportsTableBody');
+    if (tbody) {
+        tbody.textContent = '';
+        for (let i = 0; i < 5; i++) {
+            const row = document.createElement('tr');
+            for (let j = 0; j < 6; j++) {
+                const td = document.createElement('td');
+                const skeleton = createSkeletonElement(['skeleton', 'skeleton-text']);
+                if (j === 1 || j === 3 || j === 4 || j === 5) skeleton.classList.add('skeleton-text-short');
+                if (j === 2) skeleton.classList.add('skeleton-text-medium');
+                td.appendChild(skeleton);
+                row.appendChild(td);
+            }
+            tbody.appendChild(row);
+        }
+    }
+}
+
+function showChartSkeleton(chartId) {
+    const container = document.getElementById(chartId)?.parentElement;
+    if (container) {
+        container.classList.add('loading');
+    }
+}
+
+function hideChartSkeleton(chartId) {
+    const container = document.getElementById(chartId)?.parentElement;
+    if (container) {
+        container.classList.remove('loading');
+    }
+}
+
+// ==========================================
+// ERROR BOUNDARIES WITH RETRY (using safe DOM methods)
+// ==========================================
+
+function createErrorBoundary(containerId, message, retryFn) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Store error state
+    componentErrors.set(containerId, { message, retryFn, retrying: false });
+
+    // Create error boundary using safe DOM methods
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'component-error';
+
+    const iconDiv = document.createElement('div');
+    iconDiv.className = 'component-error-icon';
+    iconDiv.textContent = '⚠️';
+    errorDiv.appendChild(iconDiv);
+
+    const textDiv = document.createElement('div');
+    textDiv.className = 'component-error-text';
+    textDiv.textContent = message;
+    errorDiv.appendChild(textDiv);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'component-error-retry';
+    retryBtn.textContent = 'Retry';
+    retryBtn.addEventListener('click', () => retryComponent(containerId));
+    errorDiv.appendChild(retryBtn);
+
+    // For charts, we need to handle the canvas
+    if (container.tagName === 'CANVAS') {
+        const wrapper = container.parentElement;
+        if (wrapper) {
+            container.style.display = 'none';
+            let existingError = wrapper.querySelector('.component-error');
+            if (existingError) existingError.remove();
+            wrapper.appendChild(errorDiv);
+        }
+    } else {
+        container.textContent = '';
+        container.appendChild(errorDiv);
+    }
+}
+
+function clearErrorBoundary(containerId) {
+    componentErrors.delete(containerId);
+
+    const container = document.getElementById(containerId);
+    if (container && container.tagName === 'CANVAS') {
+        container.style.display = 'block';
+        const wrapper = container.parentElement;
+        const errorEl = wrapper?.querySelector('.component-error');
+        if (errorEl) errorEl.remove();
+    }
+}
+
+async function retryComponent(containerId) {
+    const errorState = componentErrors.get(containerId);
+    if (!errorState || errorState.retrying) return;
+
+    errorState.retrying = true;
+
+    const container = document.getElementById(containerId);
+    const retryBtn = container?.tagName === 'CANVAS'
+        ? container.parentElement?.querySelector('.component-error-retry')
+        : container?.querySelector('.component-error-retry');
+
+    if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.textContent = '';
+        const spinner = document.createElement('span');
+        spinner.className = 'loading-spinner';
+        retryBtn.appendChild(spinner);
+        retryBtn.appendChild(document.createTextNode(' Retrying...'));
+    }
+
+    try {
+        await errorState.retryFn();
+        clearErrorBoundary(containerId);
+    } catch (error) {
+        console.error(`Retry failed for ${containerId}:`, error);
+        if (retryBtn) {
+            retryBtn.disabled = false;
+            retryBtn.textContent = 'Retry';
+        }
+        errorState.retrying = false;
+        showNotification('Retry failed. Please try again.', 'error');
+    }
+}
+
+// Make retryComponent globally accessible
+window.retryComponent = retryComponent;
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize theme first
+    initTheme();
+
+    // Load dashboard with skeleton states
     await loadDashboard();
 
     // Set up button event listeners
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
     document.getElementById('helpBtn').addEventListener('click', openHelpModal);
     document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
     document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
@@ -121,23 +330,39 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Load all dashboard data
 async function loadDashboard() {
-    try {
-        await Promise.all([
-            loadStats(),
-            loadTimelineChart(),
-            loadDomainChart(),
-            loadSourceIpChart(),
-            loadDispositionChart(),
-            loadAlignmentChart(),
-            loadComplianceChart(),
-            loadFailureTrendChart(),
-            loadTopOrganizationsChart(),
-            loadReportsTable(),
-            loadDomainFilter()
-        ]);
-    } catch (error) {
-        console.error('Error loading dashboard:', error);
-        showNotification('Error loading dashboard data', 'error');
+    // Show skeleton loading states
+    showStatsSkeleton();
+    showTableSkeleton();
+    showChartSkeleton('timelineChart');
+    showChartSkeleton('domainChart');
+    showChartSkeleton('sourceIpChart');
+    showChartSkeleton('dispositionChart');
+    showChartSkeleton('alignmentChart');
+    showChartSkeleton('complianceChart');
+    showChartSkeleton('failureTrendChart');
+    showChartSkeleton('topOrganizationsChart');
+
+    // Load all components in parallel, handling errors individually
+    const loadTasks = [
+        { fn: loadStats, name: 'stats' },
+        { fn: loadTimelineChart, name: 'timelineChart' },
+        { fn: loadDomainChart, name: 'domainChart' },
+        { fn: loadSourceIpChart, name: 'sourceIpChart' },
+        { fn: loadDispositionChart, name: 'dispositionChart' },
+        { fn: loadAlignmentChart, name: 'alignmentChart' },
+        { fn: loadComplianceChart, name: 'complianceChart' },
+        { fn: loadFailureTrendChart, name: 'failureTrendChart' },
+        { fn: loadTopOrganizationsChart, name: 'topOrganizationsChart' },
+        { fn: loadReportsTable, name: 'reportsTable' },
+        { fn: loadDomainFilter, name: 'domainFilter' }
+    ];
+
+    const results = await Promise.allSettled(loadTasks.map(task => task.fn()));
+
+    // Check for any failures
+    const failures = results.filter((r, i) => r.status === 'rejected');
+    if (failures.length > 0) {
+        console.error('Some dashboard components failed to load:', failures);
     }
 }
 
@@ -277,139 +502,192 @@ function buildQueryString(extraParams = {}) {
 
 // Load summary statistics
 async function loadStats() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    document.getElementById('totalReports').textContent = data.total_reports || 0;
-    document.getElementById('totalMessages').textContent = data.total_messages?.toLocaleString() || 0;
-    document.getElementById('passRate').textContent = data.pass_percentage ? `${data.pass_percentage.toFixed(1)}%` : '0%';
-    document.getElementById('failRate').textContent = data.fail_percentage ? `${data.fail_percentage.toFixed(1)}%` : '0%';
+        document.getElementById('totalReports').textContent = data.total_reports || 0;
+        document.getElementById('totalMessages').textContent = data.total_messages?.toLocaleString() || 0;
+        document.getElementById('passRate').textContent = data.pass_percentage ? `${data.pass_percentage.toFixed(1)}%` : '0%';
+        document.getElementById('failRate').textContent = data.fail_percentage ? `${data.fail_percentage.toFixed(1)}%` : '0%';
+    } catch (error) {
+        console.error('Error loading stats:', error);
+        // Create a simple error display for stats
+        ['totalReports', 'passRate', 'failRate', 'totalMessages'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '—';
+        });
+        throw error;
+    }
 }
 
 // Load timeline chart
 async function loadTimelineChart() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/timeline?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/timeline?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('timelineChart').getContext('2d');
+        const ctx = document.getElementById('timelineChart').getContext('2d');
 
-    if (timelineChart) {
-        timelineChart.destroy();
-    }
+        if (timelineChart) {
+            timelineChart.destroy();
+        }
 
-    timelineChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.timeline.map(d => d.date),
-            datasets: [
-                {
-                    label: 'Pass',
-                    data: data.timeline.map(d => d.pass_count),
-                    borderColor: '#27ae60',
-                    backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                    tension: 0.4
-                },
-                {
-                    label: 'Fail',
-                    data: data.timeline.map(d => d.fail_count),
-                    borderColor: '#e74c3c',
-                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                    tension: 0.4
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'top'
-                },
-                tooltip: {
-                    callbacks: {
-                        footer: (tooltipItems) => {
-                            const total = tooltipItems.reduce((sum, item) => sum + item.parsed.y, 0);
-                            return `Total: ${total.toLocaleString()}`;
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+        timelineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.timeline.map(d => d.date),
+                datasets: [
+                    {
+                        label: 'Pass',
+                        data: data.timeline.map(d => d.pass_count),
+                        borderColor: '#27ae60',
+                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Fail',
+                        data: data.timeline.map(d => d.fail_count),
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            footer: (tooltipItems) => {
+                                const total = tooltipItems.reduce((sum, item) => sum + item.parsed.y, 0);
+                                return `Total: ${total.toLocaleString()}`;
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => value.toLocaleString()
+                },
+                scales: {
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => value.toLocaleString(),
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('timelineChart');
+    } catch (error) {
+        console.error('Error loading timeline chart:', error);
+        hideChartSkeleton('timelineChart');
+        createErrorBoundary('timelineChart', 'Failed to load timeline data', loadTimelineChart);
+        throw error;
+    }
 }
 
 // Load domain chart
 async function loadDomainChart() {
-    const response = await fetch(`${API_BASE}/domains`);
-    const data = await response.json();
+    try {
+        const response = await fetch(`${API_BASE}/domains`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('domainChart').getContext('2d');
+        const ctx = document.getElementById('domainChart').getContext('2d');
 
-    if (domainChart) {
-        domainChart.destroy();
-    }
+        if (domainChart) {
+            domainChart.destroy();
+        }
 
-    // Limit to top 10 domains
-    const domains = data.domains.slice(0, 10);
+        // Limit to top 10 domains
+        const domains = data.domains.slice(0, 10);
 
-    domainChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: domains.map(d => d.domain),
-            datasets: [
-                {
-                    label: 'Reports',
-                    data: domains.map(d => d.report_count),
-                    backgroundColor: '#3498db'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            onClick: (event, elements) => {
-                if (elements.length > 0) {
-                    const index = elements[0].index;
-                    const domain = domains[index].domain;
-                    filterByDomain(domain);
-                }
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+        domainChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: domains.map(d => d.domain),
+                datasets: [
+                    {
+                        label: 'Reports',
+                        data: domains.map(d => d.report_count),
+                        backgroundColor: '#3498db'
+                    }
+                ]
             },
-            plugins: {
-                legend: {
-                    position: 'top'
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                onClick: (event, elements) => {
+                    if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const domain = domains[index].domain;
+                        filterByDomain(domain);
+                    }
                 },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const domain = domains[context.dataIndex];
-                            return [
-                                `Reports: ${domain.report_count}`,
-                                `Messages: ${domain.total_messages?.toLocaleString() || 0}`
-                            ];
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const domain = domains[context.dataIndex];
+                                return [
+                                    `Reports: ${domain.report_count}`,
+                                    `Messages: ${domain.total_messages?.toLocaleString() || 0}`
+                                ];
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => value.toLocaleString()
+                },
+                scales: {
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => value.toLocaleString(),
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('domainChart');
+    } catch (error) {
+        console.error('Error loading domain chart:', error);
+        hideChartSkeleton('domainChart');
+        createErrorBoundary('domainChart', 'Failed to load domain data', loadDomainChart);
+        throw error;
+    }
 }
 
 // Filter by domain (from chart click)
@@ -422,108 +700,142 @@ function filterByDomain(domain) {
 
 // Load source IP chart
 async function loadSourceIpChart() {
-    const queryString = buildQueryString({ page_size: 10 });
-    const response = await fetch(`${API_BASE}/rollup/sources?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString({ page_size: 10 });
+        const response = await fetch(`${API_BASE}/rollup/sources?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('sourceIpChart').getContext('2d');
+        const ctx = document.getElementById('sourceIpChart').getContext('2d');
 
-    if (sourceIpChart) {
-        sourceIpChart.destroy();
-    }
+        if (sourceIpChart) {
+            sourceIpChart.destroy();
+        }
 
-    sourceIpChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.sources.map(d => d.source_ip),
-            datasets: [{
-                label: 'Message Count',
-                data: data.sources.map(d => d.total_count),
-                backgroundColor: '#3498db'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            indexAxis: 'y',
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const source = data.sources[context.dataIndex];
-                            return [
-                                `Messages: ${source.total_count.toLocaleString()}`,
-                                `Pass: ${source.pass_count.toLocaleString()}`,
-                                `Fail: ${source.fail_count.toLocaleString()}`
-                            ];
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+        sourceIpChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.sources.map(d => d.source_ip),
+                datasets: [{
+                    label: 'Message Count',
+                    data: data.sources.map(d => d.total_count),
+                    backgroundColor: '#3498db'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const source = data.sources[context.dataIndex];
+                                return [
+                                    `Messages: ${source.total_count.toLocaleString()}`,
+                                    `Pass: ${source.pass_count.toLocaleString()}`,
+                                    `Fail: ${source.fail_count.toLocaleString()}`
+                                ];
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => value.toLocaleString()
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => value.toLocaleString(),
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('sourceIpChart');
+    } catch (error) {
+        console.error('Error loading source IP chart:', error);
+        hideChartSkeleton('sourceIpChart');
+        createErrorBoundary('sourceIpChart', 'Failed to load source IP data', loadSourceIpChart);
+        throw error;
+    }
 }
 
 // Load disposition chart
 async function loadDispositionChart() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('dispositionChart').getContext('2d');
+        const ctx = document.getElementById('dispositionChart').getContext('2d');
 
-    if (dispositionChart) {
-        dispositionChart.destroy();
-    }
+        if (dispositionChart) {
+            dispositionChart.destroy();
+        }
 
-    // Aggregate disposition data (simplified - in production you'd have an API endpoint for this)
-    const dispositionData = {
-        'none': data.total_messages ? Math.floor(data.total_messages * 0.7) : 0,
-        'quarantine': data.total_messages ? Math.floor(data.total_messages * 0.2) : 0,
-        'reject': data.total_messages ? Math.floor(data.total_messages * 0.1) : 0
-    };
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
 
-    dispositionChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['None', 'Quarantine', 'Reject'],
-            datasets: [{
-                data: [dispositionData.none, dispositionData.quarantine, dispositionData.reject],
-                backgroundColor: ['#27ae60', '#f39c12', '#e74c3c']
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const label = context.label || '';
-                            const value = context.parsed || 0;
-                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                            return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+        // Aggregate disposition data (simplified - in production you'd have an API endpoint for this)
+        const dispositionData = {
+            'none': data.total_messages ? Math.floor(data.total_messages * 0.7) : 0,
+            'quarantine': data.total_messages ? Math.floor(data.total_messages * 0.2) : 0,
+            'reject': data.total_messages ? Math.floor(data.total_messages * 0.1) : 0
+        };
+
+        dispositionChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['None', 'Quarantine', 'Reject'],
+                datasets: [{
+                    data: [dispositionData.none, dispositionData.quarantine, dispositionData.reject],
+                    backgroundColor: ['#27ae60', '#f39c12', '#e74c3c']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('dispositionChart');
+    } catch (error) {
+        console.error('Error loading disposition chart:', error);
+        hideChartSkeleton('dispositionChart');
+        createErrorBoundary('dispositionChart', 'Failed to load disposition data', loadDispositionChart);
+        throw error;
+    }
 }
 
 // Load reports table - using safe DOM methods to prevent XSS
@@ -1432,254 +1744,328 @@ function updateRecordsPagination(reportId, currentPage, pageSize, total) {
 
 // Load alignment breakdown chart
 async function loadAlignmentChart() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('alignmentChart').getContext('2d');
+        const ctx = document.getElementById('alignmentChart').getContext('2d');
 
-    if (alignmentChart) {
-        alignmentChart.destroy();
-    }
+        if (alignmentChart) {
+            alignmentChart.destroy();
+        }
 
-    const total = data.both_pass + data.dkim_only + data.spf_only + data.both_fail;
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
 
-    alignmentChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Authentication Alignment'],
-            datasets: [
-                {
-                    label: 'Both Pass',
-                    data: [data.both_pass],
-                    backgroundColor: '#27ae60'
-                },
-                {
-                    label: 'DKIM Only',
-                    data: [data.dkim_only],
-                    backgroundColor: '#3498db'
-                },
-                {
-                    label: 'SPF Only',
-                    data: [data.spf_only],
-                    backgroundColor: '#f39c12'
-                },
-                {
-                    label: 'Both Fail',
-                    data: [data.both_fail],
-                    backgroundColor: '#e74c3c'
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const value = context.parsed.y;
-                            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                            return `${context.dataset.label}: ${value.toLocaleString()} (${pct}%)`;
+        const total = data.both_pass + data.dkim_only + data.spf_only + data.both_fail;
+
+        alignmentChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Authentication Alignment'],
+                datasets: [
+                    {
+                        label: 'Both Pass',
+                        data: [data.both_pass],
+                        backgroundColor: '#27ae60'
+                    },
+                    {
+                        label: 'DKIM Only',
+                        data: [data.dkim_only],
+                        backgroundColor: '#3498db'
+                    },
+                    {
+                        label: 'SPF Only',
+                        data: [data.spf_only],
+                        backgroundColor: '#f39c12'
+                    },
+                    {
+                        label: 'Both Fail',
+                        data: [data.both_fail],
+                        backgroundColor: '#e74c3c'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const value = context.parsed.y;
+                                const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${context.dataset.label}: ${value.toLocaleString()} (${pct}%)`;
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    stacked: true
                 },
-                y: {
-                    stacked: true,
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => value.toLocaleString()
+                scales: {
+                    x: {
+                        stacked: true,
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => value.toLocaleString(),
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('alignmentChart');
+    } catch (error) {
+        console.error('Error loading alignment chart:', error);
+        hideChartSkeleton('alignmentChart');
+        createErrorBoundary('alignmentChart', 'Failed to load alignment data', loadAlignmentChart);
+        throw error;
+    }
 }
 
 // Load compliance chart
 async function loadComplianceChart() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/alignment-breakdown?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('complianceChart').getContext('2d');
+        const ctx = document.getElementById('complianceChart').getContext('2d');
 
-    if (complianceChart) {
-        complianceChart.destroy();
-    }
-
-    const compliant = data.both_pass;
-    const nonCompliant = data.dkim_only + data.spf_only + data.both_fail;
-    const total = compliant + nonCompliant;
-
-    complianceChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Compliant (Both Pass)', 'Non-Compliant'],
-            datasets: [{
-                data: [compliant, nonCompliant],
-                backgroundColor: ['#27ae60', '#e74c3c']
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const value = context.parsed;
-                            const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                            return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
-                        }
-                    }
-                }
-            }
+        if (complianceChart) {
+            complianceChart.destroy();
         }
-    });
-}
 
-// Load failure trend chart
-async function loadFailureTrendChart() {
-    const queryString = buildQueryString();
-    const response = await fetch(`${API_BASE}/rollup/failure-trend?${queryString}`);
-    const data = await response.json();
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
 
-    const ctx = document.getElementById('failureTrendChart').getContext('2d');
+        const compliant = data.both_pass;
+        const nonCompliant = data.dkim_only + data.spf_only + data.both_fail;
+        const total = compliant + nonCompliant;
 
-    if (failureTrendChart) {
-        failureTrendChart.destroy();
-    }
-
-    failureTrendChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: data.trend.map(d => d.date),
-            datasets: [
-                {
-                    label: 'Failure Rate',
-                    data: data.trend.map(d => d.failure_rate),
-                    borderColor: '#e74c3c',
-                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                },
-                {
-                    label: '7-Day Moving Average',
-                    data: data.trend.map(d => d.moving_average),
-                    borderColor: '#3498db',
-                    backgroundColor: 'transparent',
-                    borderDash: [5, 5],
-                    tension: 0.4,
-                    fill: false
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                legend: {
-                    position: 'top'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const dataPoint = data.trend[context.dataIndex];
-                            if (context.datasetIndex === 0) {
-                                return [
-                                    `Failure Rate: ${dataPoint.failure_rate.toFixed(1)}%`,
-                                    `Failed: ${dataPoint.failed_count.toLocaleString()}`,
-                                    `Total: ${dataPoint.total_count.toLocaleString()}`
-                                ];
-                            } else {
-                                return `Moving Avg: ${dataPoint.moving_average.toFixed(1)}%`;
+        complianceChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Compliant (Both Pass)', 'Non-Compliant'],
+                datasets: [{
+                    data: [compliant, nonCompliant],
+                    backgroundColor: ['#27ae60', '#e74c3c']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const value = context.parsed;
+                                const pct = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
                             }
                         }
                     }
                 }
+            }
+        });
+
+        hideChartSkeleton('complianceChart');
+    } catch (error) {
+        console.error('Error loading compliance chart:', error);
+        hideChartSkeleton('complianceChart');
+        createErrorBoundary('complianceChart', 'Failed to load compliance data', loadComplianceChart);
+        throw error;
+    }
+}
+
+// Load failure trend chart
+async function loadFailureTrendChart() {
+    try {
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/failure-trend?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        const ctx = document.getElementById('failureTrendChart').getContext('2d');
+
+        if (failureTrendChart) {
+            failureTrendChart.destroy();
+        }
+
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+        failureTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.trend.map(d => d.date),
+                datasets: [
+                    {
+                        label: 'Failure Rate',
+                        data: data.trend.map(d => d.failure_rate),
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: '7-Day Moving Average',
+                        data: data.trend.map(d => d.moving_average),
+                        borderColor: '#3498db',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.4,
+                        fill: false
+                    }
+                ]
             },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        callback: (value) => `${value}%`
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: textColor }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const dataPoint = data.trend[context.dataIndex];
+                                if (context.datasetIndex === 0) {
+                                    return [
+                                        `Failure Rate: ${dataPoint.failure_rate.toFixed(1)}%`,
+                                        `Failed: ${dataPoint.failed_count.toLocaleString()}`,
+                                        `Total: ${dataPoint.total_count.toLocaleString()}`
+                                    ];
+                                } else {
+                                    return `Moving Avg: ${dataPoint.moving_average.toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: (value) => `${value}%`,
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('failureTrendChart');
+    } catch (error) {
+        console.error('Error loading failure trend chart:', error);
+        hideChartSkeleton('failureTrendChart');
+        createErrorBoundary('failureTrendChart', 'Failed to load failure trend data', loadFailureTrendChart);
+        throw error;
+    }
 }
 
 // Load top organizations chart
 async function loadTopOrganizationsChart() {
-    const queryString = buildQueryString({ limit: 10 });
-    const response = await fetch(`${API_BASE}/rollup/top-organizations?${queryString}`);
-    const data = await response.json();
+    try {
+        const queryString = buildQueryString({ limit: 10 });
+        const response = await fetch(`${API_BASE}/rollup/top-organizations?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-    const ctx = document.getElementById('topOrganizationsChart').getContext('2d');
+        const ctx = document.getElementById('topOrganizationsChart').getContext('2d');
 
-    if (topOrganizationsChart) {
-        topOrganizationsChart.destroy();
-    }
+        if (topOrganizationsChart) {
+            topOrganizationsChart.destroy();
+        }
 
-    topOrganizationsChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.organizations.map(d => d.org_name),
-            datasets: [{
-                label: 'Total Messages',
-                data: data.organizations.map(d => d.total_messages),
-                backgroundColor: '#3498db'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            indexAxis: 'y',
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    callbacks: {
-                        label: (context) => {
-                            const org = data.organizations[context.dataIndex];
-                            const passPct = org.total_messages > 0
-                                ? ((org.pass_count / org.total_messages) * 100).toFixed(1)
-                                : 0;
-                            return [
-                                `Total: ${org.total_messages.toLocaleString()}`,
-                                `Pass: ${org.pass_count.toLocaleString()}`,
-                                `Fail: ${org.fail_count.toLocaleString()}`,
-                                `Pass Rate: ${passPct}%`
-                            ];
+        const theme = document.documentElement.getAttribute('data-theme');
+        const textColor = theme === 'dark' ? '#e8e8e8' : '#333333';
+        const gridColor = theme === 'dark' ? '#2d4a6f' : '#e0e0e0';
+
+        topOrganizationsChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.organizations.map(d => d.org_name),
+                datasets: [{
+                    label: 'Total Messages',
+                    data: data.organizations.map(d => d.total_messages),
+                    backgroundColor: '#3498db'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                indexAxis: 'y',
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const org = data.organizations[context.dataIndex];
+                                const passPct = org.total_messages > 0
+                                    ? ((org.pass_count / org.total_messages) * 100).toFixed(1)
+                                    : 0;
+                                return [
+                                    `Total: ${org.total_messages.toLocaleString()}`,
+                                    `Pass: ${org.pass_count.toLocaleString()}`,
+                                    `Fail: ${org.fail_count.toLocaleString()}`,
+                                    `Pass Rate: ${passPct}%`
+                                ];
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: (value) => value.toLocaleString()
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => value.toLocaleString(),
+                            color: textColor
+                        },
+                        grid: { color: gridColor }
+                    },
+                    y: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
                     }
                 }
             }
-        }
-    });
+        });
+
+        hideChartSkeleton('topOrganizationsChart');
+    } catch (error) {
+        console.error('Error loading top organizations chart:', error);
+        hideChartSkeleton('topOrganizationsChart');
+        createErrorBoundary('topOrganizationsChart', 'Failed to load organizations data', loadTopOrganizationsChart);
+        throw error;
+    }
 }
 
 // Tooltip management
