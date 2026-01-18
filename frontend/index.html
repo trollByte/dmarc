@@ -8,72 +8,173 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
+    <!-- Skip Navigation for Accessibility -->
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <div class="container">
         <header>
-            <h1>📊 DMARC Report Dashboard</h1>
+            <div class="header-brand">
+                <h1>DMARC Report Dashboard</h1>
+                <span class="header-subtitle">Email Authentication Analytics</span>
+            </div>
             <div class="header-actions">
-                <button id="themeToggle" class="theme-toggle" title="Toggle dark mode">🌙</button>
-                <button id="helpBtn" class="btn-secondary" title="What is DMARC?">❓ Help</button>
-                <button id="uploadBtn" class="btn-primary">📤 Upload Reports</button>
-                <button id="ingestBtn" class="btn-primary">🔄 Process Reports</button>
-                <div class="export-dropdown">
-                    <button id="exportBtn" class="btn-secondary">📥 Export ▾</button>
-                    <div class="export-menu" id="exportMenu">
-                        <a href="#" id="exportReportsCSV">Reports (CSV)</a>
-                        <a href="#" id="exportRecordsCSV">Records (CSV)</a>
-                        <a href="#" id="exportSourcesCSV">Sources (CSV)</a>
-                        <a href="#" id="exportPDF">Summary Report (PDF)</a>
+                <!-- Primary Actions -->
+                <div class="action-group action-group-primary">
+                    <div class="dropdown">
+                        <button id="importBtn" class="btn-primary dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            Import
+                            <svg class="icon icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="dropdown-menu" id="importMenu" role="menu">
+                            <button id="uploadBtn" role="menuitem">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                    <polyline points="17 8 12 3 7 8"></polyline>
+                                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                                </svg>
+                                Upload Files
+                            </button>
+                            <button id="ingestBtn" role="menuitem">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                </svg>
+                                Check Email Inbox
+                            </button>
+                        </div>
+                    </div>
+                    <div class="dropdown">
+                        <button id="exportBtn" class="btn-secondary dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                            Export
+                            <svg class="icon icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </button>
+                        <div class="dropdown-menu" id="exportMenu" role="menu">
+                            <button id="exportReportsCSV" role="menuitem">Reports (CSV)</button>
+                            <button id="exportRecordsCSV" role="menuitem">Records (CSV)</button>
+                            <button id="exportSourcesCSV" role="menuitem">Sources (CSV)</button>
+                            <div class="dropdown-divider" role="separator"></div>
+                            <button id="exportPDF" role="menuitem">Summary Report (PDF)</button>
+                        </div>
                     </div>
                 </div>
-                <button id="refreshBtn" class="btn-secondary">↻ Refresh</button>
+
+                <!-- Secondary Actions -->
+                <div class="action-group action-group-secondary">
+                    <button id="refreshBtn" class="btn-icon" aria-label="Refresh dashboard" title="Refresh dashboard">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+                    <button id="helpBtn" class="btn-icon" aria-label="Help and documentation" title="What is DMARC?">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                    </button>
+                    <button id="themeToggle" class="btn-icon" aria-label="Toggle dark mode" title="Toggle dark mode">
+                        <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <svg class="icon icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
         </header>
 
-        <!-- Filters -->
-        <div class="filters">
-            <div class="filter-group">
-                <label for="domainFilter">Domain:</label>
-                <select id="domainFilter">
-                    <option value="">All Domains</option>
-                </select>
-            </div>
-            <div class="filter-group">
-                <label for="dateRangeFilter">Date Range:</label>
-                <select id="dateRangeFilter">
-                    <option value="7">Last 7 days</option>
-                    <option value="30">Last 30 days</option>
-                    <option value="90">Last 90 days</option>
-                    <option value="365" selected>Last 365 days</option>
-                    <option value="1000">Last 1000 days</option>
-                    <option value="custom">Custom...</option>
-                </select>
-            </div>
-            <div class="filter-group custom-date" style="display: none;">
-                <label for="startDate">Start:</label>
-                <input type="date" id="startDate">
-                <label for="endDate">End:</label>
-                <input type="date" id="endDate">
-            </div>
-            <button id="applyFiltersBtn" class="btn-small">Apply Filters</button>
-            <button id="clearFiltersBtn" class="btn-small">Clear</button>
+        <!-- Loading Progress Bar -->
+        <div id="loadingProgress" class="loading-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Dashboard loading progress">
+            <div class="loading-progress-bar"></div>
+            <span class="loading-progress-text">Loading dashboard...</span>
+        </div>
 
-            <div class="advanced-filters">
-                <button id="toggleAdvancedFilters" class="btn-small">⚙ Advanced Filters</button>
-                <div id="advancedFiltersPanel" class="advanced-filters-panel" style="display: none;">
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Filter Bar -->
+            <div class="filter-bar" role="search" aria-label="Filter reports">
+                <div class="filter-bar-main">
+                    <div class="filter-group">
+                        <label for="domainFilter">Domain</label>
+                        <select id="domainFilter">
+                            <option value="">All Domains</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="dateRangeFilter">Date Range</label>
+                        <select id="dateRangeFilter">
+                            <option value="7">Last 7 days</option>
+                            <option value="30">Last 30 days</option>
+                            <option value="90">Last 90 days</option>
+                            <option value="365" selected>Last year</option>
+                            <option value="all">All time</option>
+                            <option value="custom">Custom range</option>
+                        </select>
+                    </div>
+                    <div class="filter-group filter-group-dates" id="customDateGroup" hidden>
+                        <label for="startDate">From</label>
+                        <input type="date" id="startDate" aria-label="Start date">
+                        <span class="date-separator">to</span>
+                        <input type="date" id="endDate" aria-label="End date">
+                    </div>
+                    <div class="filter-actions">
+                        <button id="applyFiltersBtn" class="btn-primary btn-sm">Apply</button>
+                        <button id="clearFiltersBtn" class="btn-ghost btn-sm">Clear</button>
+                    </div>
+                    <button id="toggleAdvancedFilters" class="btn-ghost btn-sm filter-toggle" aria-expanded="false" aria-controls="advancedFiltersPanel">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <line x1="4" y1="21" x2="4" y2="14"></line>
+                            <line x1="4" y1="10" x2="4" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="12"></line>
+                            <line x1="12" y1="8" x2="12" y2="3"></line>
+                            <line x1="20" y1="21" x2="20" y2="16"></line>
+                            <line x1="20" y1="12" x2="20" y2="3"></line>
+                            <line x1="1" y1="14" x2="7" y2="14"></line>
+                            <line x1="9" y1="8" x2="15" y2="8"></line>
+                            <line x1="17" y1="16" x2="23" y2="16"></line>
+                        </svg>
+                        <span>Advanced</span>
+                        <span id="activeFilterCount" class="filter-count" hidden>0</span>
+                    </button>
+                </div>
+
+                <div id="advancedFiltersPanel" class="filter-bar-advanced" hidden>
                     <div class="filter-row">
                         <div class="filter-group">
-                            <label for="sourceIpFilter">Source IP:</label>
+                            <label for="sourceIpFilter">Source IP</label>
                             <input type="text" id="sourceIpFilter" placeholder="e.g., 192.168.1.1">
                         </div>
                         <div class="filter-group">
-                            <label for="sourceIpRangeFilter">IP Range (CIDR):</label>
+                            <label for="sourceIpRangeFilter">IP Range (CIDR)</label>
                             <input type="text" id="sourceIpRangeFilter" placeholder="e.g., 192.168.1.0/24">
                         </div>
-                    </div>
-
-                    <div class="filter-row">
                         <div class="filter-group">
-                            <label for="dkimFilter">DKIM Result:</label>
+                            <label for="dkimFilter">DKIM Result</label>
                             <select id="dkimFilter">
                                 <option value="">Any</option>
                                 <option value="pass">Pass</option>
@@ -81,18 +182,15 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label for="spfFilter">SPF Result:</label>
+                            <label for="spfFilter">SPF Result</label>
                             <select id="spfFilter">
                                 <option value="">Any</option>
                                 <option value="pass">Pass</option>
                                 <option value="fail">Fail</option>
                             </select>
                         </div>
-                    </div>
-
-                    <div class="filter-row">
                         <div class="filter-group">
-                            <label for="dispositionFilter">Disposition:</label>
+                            <label for="dispositionFilter">Disposition</label>
                             <select id="dispositionFilter">
                                 <option value="">Any</option>
                                 <option value="none">None</option>
@@ -101,107 +199,252 @@
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label for="orgNameFilter">Organization:</label>
+                            <label for="orgNameFilter">Organization</label>
                             <input type="text" id="orgNameFilter" placeholder="e.g., google.com">
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <div class="stats-grid">
-            <div class="stat-card" title="Total number of DMARC aggregate reports received from email providers">
-                <h3>Total Reports</h3>
-                <div id="totalReports" class="stat-value">-</div>
-            </div>
-            <div class="stat-card" title="Percentage of emails that passed both SPF and DKIM authentication checks. Higher is better!">
-                <h3>Pass Rate</h3>
-                <div id="passRate" class="stat-value">-</div>
-            </div>
-            <div class="stat-card" title="Percentage of emails that failed both SPF and DKIM checks. These may be spoofed or misconfigured.">
-                <h3>Fail Rate</h3>
-                <div id="failRate" class="stat-value">-</div>
-            </div>
-            <div class="stat-card" title="Total number of individual email messages covered by all reports">
-                <h3>Total Messages</h3>
-                <div id="totalMessages" class="stat-value">-</div>
-            </div>
-        </div>
+            <!-- Stats Cards with Trends -->
+            <section class="stats-section" aria-label="Key metrics">
+                <div class="stats-grid">
+                    <div class="stat-card" role="group" aria-labelledby="stat-reports-label">
+                        <div class="stat-header">
+                            <h3 id="stat-reports-label">Total Reports</h3>
+                            <button class="stat-info-btn" aria-label="More info about total reports" title="Total DMARC aggregate reports received">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="stat-content">
+                            <div id="totalReports" class="stat-value">-</div>
+                            <div id="totalReportsTrend" class="stat-trend" aria-live="polite"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-card-success" role="group" aria-labelledby="stat-pass-label">
+                        <div class="stat-header">
+                            <h3 id="stat-pass-label">Pass Rate</h3>
+                            <button class="stat-info-btn" aria-label="More info about pass rate" title="Percentage passing both SPF and DKIM">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="stat-content">
+                            <div id="passRate" class="stat-value">-</div>
+                            <div id="passRateTrend" class="stat-trend" aria-live="polite"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card stat-card-danger" role="group" aria-labelledby="stat-fail-label">
+                        <div class="stat-header">
+                            <h3 id="stat-fail-label">Fail Rate</h3>
+                            <button class="stat-info-btn" aria-label="More info about fail rate" title="Percentage failing both SPF and DKIM">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="stat-content">
+                            <div id="failRate" class="stat-value">-</div>
+                            <div id="failRateTrend" class="stat-trend" aria-live="polite"></div>
+                        </div>
+                    </div>
+                    <div class="stat-card" role="group" aria-labelledby="stat-messages-label">
+                        <div class="stat-header">
+                            <h3 id="stat-messages-label">Total Messages</h3>
+                            <button class="stat-info-btn" aria-label="More info about total messages" title="Total email messages in all reports">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="stat-content">
+                            <div id="totalMessages" class="stat-value">-</div>
+                            <div id="totalMessagesTrend" class="stat-trend" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <div class="charts-grid">
-            <div class="chart-container">
-                <h2>DMARC Results Over Time</h2>
-                <canvas id="timelineChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Results by Domain (Click to filter)</h2>
-                <canvas id="domainChart"></canvas>
-            </div>
-        </div>
+            <!-- Primary Charts -->
+            <section class="charts-section charts-section-primary" aria-label="Primary analytics">
+                <div class="charts-grid">
+                    <div class="chart-container" role="img" aria-label="DMARC results over time chart">
+                        <div class="chart-header">
+                            <h2>DMARC Results Over Time</h2>
+                        </div>
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                    <div class="chart-container chart-interactive" role="img" aria-label="Results by domain chart - click to filter">
+                        <div class="chart-header">
+                            <h2>Results by Domain</h2>
+                            <span class="chart-hint">Click to filter</span>
+                        </div>
+                        <canvas id="domainChart"></canvas>
+                    </div>
+                </div>
 
-        <div class="charts-grid">
-            <div class="chart-container">
-                <h2>Top Source IPs</h2>
-                <canvas id="sourceIpChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Disposition Breakdown</h2>
-                <canvas id="dispositionChart"></canvas>
-            </div>
-        </div>
+                <div class="charts-grid">
+                    <div class="chart-container" role="img" aria-label="Top source IPs chart">
+                        <div class="chart-header">
+                            <h2>Top Source IPs</h2>
+                        </div>
+                        <canvas id="sourceIpChart"></canvas>
+                    </div>
+                    <div class="chart-container" role="img" aria-label="Disposition breakdown chart">
+                        <div class="chart-header">
+                            <h2>Disposition Breakdown</h2>
+                        </div>
+                        <canvas id="dispositionChart"></canvas>
+                    </div>
+                </div>
+            </section>
 
-        <div class="charts-grid">
-            <div class="chart-container">
-                <h2>SPF/DKIM Alignment Breakdown</h2>
-                <canvas id="alignmentChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Policy Compliance</h2>
-                <canvas id="complianceChart"></canvas>
-            </div>
-        </div>
+            <!-- Secondary Charts (Collapsible) -->
+            <section class="charts-section charts-section-secondary" aria-label="Additional analytics">
+                <button id="toggleSecondaryCharts" class="section-toggle" aria-expanded="false" aria-controls="secondaryChartsContent">
+                    <svg class="icon icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                    <span>Show More Analytics</span>
+                    <span class="section-toggle-hint">4 additional charts</span>
+                </button>
 
-        <div class="charts-grid">
-            <div class="chart-container">
-                <h2>Failure Rate Trend (with 7-day moving average)</h2>
-                <canvas id="failureTrendChart"></canvas>
-            </div>
-            <div class="chart-container">
-                <h2>Top Sending Organizations</h2>
-                <canvas id="topOrganizationsChart"></canvas>
-            </div>
-        </div>
+                <div id="secondaryChartsContent" class="charts-section-content" hidden>
+                    <div class="charts-grid">
+                        <div class="chart-container" role="img" aria-label="SPF DKIM alignment breakdown chart">
+                            <div class="chart-header">
+                                <h2>SPF/DKIM Alignment</h2>
+                            </div>
+                            <canvas id="alignmentChart"></canvas>
+                        </div>
+                        <div class="chart-container" role="img" aria-label="Policy compliance chart">
+                            <div class="chart-header">
+                                <h2>Policy Compliance</h2>
+                            </div>
+                            <canvas id="complianceChart"></canvas>
+                        </div>
+                    </div>
 
-        <div class="table-container">
-            <h2>Recent Reports</h2>
-            <table id="reportsTable">
-                <thead>
-                    <tr>
-                        <th>Date Range</th>
-                        <th>Organization</th>
-                        <th>Domain</th>
-                        <th>Total Messages</th>
-                        <th>Pass/Fail</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="reportsTableBody">
-                    <tr>
-                        <td colspan="6" class="loading">Loading reports...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+                    <div class="charts-grid">
+                        <div class="chart-container" role="img" aria-label="Failure rate trend chart with 7 day moving average">
+                            <div class="chart-header">
+                                <h2>Failure Rate Trend</h2>
+                                <span class="chart-hint">7-day moving average</span>
+                            </div>
+                            <canvas id="failureTrendChart"></canvas>
+                        </div>
+                        <div class="chart-container" role="img" aria-label="Top sending organizations chart">
+                            <div class="chart-header">
+                                <h2>Top Organizations</h2>
+                            </div>
+                            <canvas id="topOrganizationsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Reports Table -->
+            <section class="table-section" aria-label="Recent reports">
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2>Recent Reports</h2>
+                        <span id="tableResultCount" class="table-count"></span>
+                    </div>
+                    <table id="reportsTable" aria-describedby="tableResultCount">
+                        <thead>
+                            <tr>
+                                <th scope="col" data-sort="date" class="sortable" aria-sort="none">
+                                    Date Range
+                                    <svg class="icon icon-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
+                                    </svg>
+                                </th>
+                                <th scope="col" data-sort="org" class="sortable" aria-sort="none">
+                                    Organization
+                                    <svg class="icon icon-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
+                                    </svg>
+                                </th>
+                                <th scope="col" data-sort="domain" class="sortable" aria-sort="none">
+                                    Domain
+                                    <svg class="icon icon-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
+                                    </svg>
+                                </th>
+                                <th scope="col" data-sort="messages" class="sortable" aria-sort="none">
+                                    Messages
+                                    <svg class="icon icon-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M7 15l5 5 5-5M7 9l5-5 5 5"></path>
+                                    </svg>
+                                </th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportsTableBody">
+                            <tr>
+                                <td colspan="6" class="loading">Loading reports...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Empty State -->
+                    <div id="tableEmptyState" class="empty-state" hidden>
+                        <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <h3 class="empty-state-title">No reports found</h3>
+                        <p class="empty-state-description" id="emptyStateDescription">No DMARC reports match your current filters.</p>
+                        <div class="empty-state-actions">
+                            <button id="emptyStateClearFilters" class="btn-secondary">Clear Filters</button>
+                            <button id="emptyStateUpload" class="btn-primary">Upload Reports</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
 
-    <div id="notification" class="notification"></div>
+    <!-- Notification Toast -->
+    <div id="notification" class="notification" role="alert" aria-live="polite"></div>
+
+    <!-- New Data Available Banner -->
+    <div id="newDataBanner" class="new-data-banner" hidden>
+        <span>New data available</span>
+        <button id="refreshDataBtn" class="btn-primary btn-sm">Refresh</button>
+        <button id="dismissBannerBtn" class="btn-ghost btn-sm" aria-label="Dismiss">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
 
     <!-- Report Detail Modal -->
-    <div id="reportModal" class="modal">
+    <div id="reportModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle" hidden>
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Report Details</h2>
-                <span class="close">&times;</span>
+                <nav class="modal-breadcrumb" aria-label="Modal navigation">
+                    <span id="reportModalBreadcrumb">Reports</span>
+                </nav>
+                <h2 id="reportModalTitle">Report Details</h2>
+                <button class="modal-close" aria-label="Close modal" id="reportModalClose">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body" id="reportModalBody">
                 <div class="loading">Loading...</div>
@@ -210,11 +453,16 @@
     </div>
 
     <!-- Upload Modal -->
-    <div id="uploadModal" class="modal">
+    <div id="uploadModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle" hidden>
         <div class="modal-content modal-large">
             <div class="modal-header">
-                <h2>Upload DMARC Reports</h2>
-                <span class="close" id="uploadModalClose">&times;</span>
+                <h2 id="uploadModalTitle">Upload DMARC Reports</h2>
+                <button class="modal-close" aria-label="Close modal" id="uploadModalClose">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
                 <!-- Drag & Drop Zone -->
@@ -281,11 +529,16 @@
     </div>
 
     <!-- Help Modal -->
-    <div id="helpModal" class="modal">
+    <div id="helpModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="helpModalTitle" hidden>
         <div class="modal-content modal-large">
             <div class="modal-header">
-                <h2>Understanding DMARC, SPF & DKIM</h2>
-                <span class="close" id="helpModalClose">&times;</span>
+                <h2 id="helpModalTitle">Understanding DMARC, SPF & DKIM</h2>
+                <button class="modal-close" aria-label="Close modal" id="helpModalClose">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="help-section">

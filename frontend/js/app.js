@@ -25,6 +25,21 @@ let selectedFiles = [];
 // Error tracking for retry functionality
 const componentErrors = new Map();
 
+// Loading progress tracking
+let loadingProgress = {
+    total: 11,
+    completed: 0,
+    active: false
+};
+
+// Auto-refresh state
+let autoRefreshInterval = null;
+let newDataAvailable = false;
+let lastDataHash = null;
+
+// Secondary charts visibility
+let secondaryChartsVisible = false;
+
 // ==========================================
 // THEME MANAGEMENT
 // ==========================================
@@ -49,8 +64,9 @@ function toggleTheme() {
 function updateThemeIcon(theme) {
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
-        themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
+        themeToggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
         themeToggle.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+        // Icons are toggled via CSS based on data-theme attribute
     }
 }
 
@@ -226,110 +242,433 @@ async function retryComponent(containerId) {
 // Make retryComponent globally accessible
 window.retryComponent = retryComponent;
 
-// Initialize dashboard
+// ==========================================
+// INITIALIZATION
+// ==========================================
+
 document.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme first
     initTheme();
 
+    // Set up all event listeners
+    setupEventListeners();
+
+    // Set up dropdown menus
+    setupDropdowns();
+
+    // Set up visibility handler for smart refresh
+    setupVisibilityHandler();
+
     // Load dashboard with skeleton states
     await loadDashboard();
 
-    // Set up button event listeners
-    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-    document.getElementById('helpBtn').addEventListener('click', openHelpModal);
-    document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
-    document.getElementById('ingestBtn').addEventListener('click', triggerIngest);
-    document.getElementById('refreshBtn').addEventListener('click', loadDashboard);
-    document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
-    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    // Start smart auto-refresh (checks for new data without auto-reloading)
+    startSmartRefresh();
+});
 
-    // Export dropdown handlers
+// ==========================================
+// EVENT LISTENERS SETUP
+// ==========================================
+
+function setupEventListeners() {
+    // Theme toggle
+    document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+
+    // Help button
+    document.getElementById('helpBtn')?.addEventListener('click', openHelpModal);
+
+    // Upload button (in dropdown)
+    document.getElementById('uploadBtn')?.addEventListener('click', openUploadModal);
+
+    // Ingest button (in dropdown)
+    document.getElementById('ingestBtn')?.addEventListener('click', triggerIngest);
+
+    // Refresh button
+    document.getElementById('refreshBtn')?.addEventListener('click', () => {
+        hideNewDataBanner();
+        loadDashboard();
+    });
+
+    // Filter buttons
+    document.getElementById('applyFiltersBtn')?.addEventListener('click', applyFilters);
+    document.getElementById('clearFiltersBtn')?.addEventListener('click', clearFilters);
+
+    // Export menu items
+    document.getElementById('exportReportsCSV')?.addEventListener('click', () => exportData('reports'));
+    document.getElementById('exportRecordsCSV')?.addEventListener('click', () => exportData('records'));
+    document.getElementById('exportSourcesCSV')?.addEventListener('click', () => exportData('sources'));
+    document.getElementById('exportPDF')?.addEventListener('click', () => exportData('pdf'));
+
+    // Advanced filters toggle
+    document.getElementById('toggleAdvancedFilters')?.addEventListener('click', toggleAdvancedFilters);
+
+    // Date range selector
+    document.getElementById('dateRangeFilter')?.addEventListener('change', handleDateRangeChange);
+
+    // Secondary charts toggle
+    document.getElementById('toggleSecondaryCharts')?.addEventListener('click', toggleSecondaryCharts);
+
+    // Modal close buttons
+    setupModalCloseHandlers();
+
+    // New data banner
+    document.getElementById('refreshDataBtn')?.addEventListener('click', () => {
+        hideNewDataBanner();
+        loadDashboard();
+    });
+    document.getElementById('dismissBannerBtn')?.addEventListener('click', hideNewDataBanner);
+
+    // Empty state buttons
+    document.getElementById('emptyStateClearFilters')?.addEventListener('click', clearFilters);
+    document.getElementById('emptyStateUpload')?.addEventListener('click', openUploadModal);
+
+    // Table sorting
+    setupTableSorting();
+}
+
+function setupDropdowns() {
+    // Import dropdown
+    const importBtn = document.getElementById('importBtn');
+    const importMenu = document.getElementById('importMenu');
+
+    if (importBtn && importMenu) {
+        importBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDropdown(importBtn, importMenu);
+        });
+    }
+
+    // Export dropdown
     const exportBtn = document.getElementById('exportBtn');
     const exportMenu = document.getElementById('exportMenu');
 
-    exportBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        exportMenu.style.display = exportMenu.style.display === 'block' ? 'none' : 'block';
-    });
+    if (exportBtn && exportMenu) {
+        exportBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDropdown(exportBtn, exportMenu);
+        });
+    }
 
-    // Close dropdown when clicking outside
-    window.addEventListener('click', (e) => {
-        if (!e.target.matches('#exportBtn')) {
-            exportMenu.style.display = 'none';
-        }
-    });
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', closeAllDropdowns);
+}
 
-    // Export menu item handlers
-    document.getElementById('exportReportsCSV').addEventListener('click', (e) => {
-        e.preventDefault();
-        exportMenu.style.display = 'none';
-        exportData('reports');
-    });
+function toggleDropdown(button, menu) {
+    const isOpen = menu.classList.contains('show');
+    closeAllDropdowns();
 
-    document.getElementById('exportRecordsCSV').addEventListener('click', (e) => {
-        e.preventDefault();
-        exportMenu.style.display = 'none';
-        exportData('records');
-    });
+    if (!isOpen) {
+        menu.classList.add('show');
+        button.setAttribute('aria-expanded', 'true');
+    }
+}
 
-    document.getElementById('exportSourcesCSV').addEventListener('click', (e) => {
-        e.preventDefault();
-        exportMenu.style.display = 'none';
-        exportData('sources');
+function closeAllDropdowns() {
+    document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+        menu.classList.remove('show');
     });
+    document.querySelectorAll('.dropdown-toggle').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+}
 
-    document.getElementById('exportPDF').addEventListener('click', (e) => {
-        e.preventDefault();
-        exportMenu.style.display = 'none';
-        exportData('pdf');
-    });
+function toggleAdvancedFilters() {
+    const panel = document.getElementById('advancedFiltersPanel');
+    const button = document.getElementById('toggleAdvancedFilters');
 
-    // Advanced filters toggle
-    document.getElementById('toggleAdvancedFilters').addEventListener('click', () => {
-        const panel = document.getElementById('advancedFiltersPanel');
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    });
+    if (!panel || !button) return;
 
-    // Date range selector
-    document.getElementById('dateRangeFilter').addEventListener('change', (e) => {
-        const customDateSection = document.querySelector('.custom-date');
-        if (e.target.value === 'custom') {
-            customDateSection.style.display = 'flex';
-        } else {
-            customDateSection.style.display = 'none';
-        }
-    });
+    const isHidden = panel.hidden;
+    panel.hidden = !isHidden;
+    button.setAttribute('aria-expanded', isHidden.toString());
 
-    // Modal close button
-    const modal = document.getElementById('reportModal');
-    const closeBtn = modal.querySelector('.close');
-    closeBtn.addEventListener('click', () => {
-        modal.style.display = 'none';
-    });
-    window.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
+    // Update filter count indicator
+    updateFilterCount();
+}
 
-    // Help modal close button
+function handleDateRangeChange(e) {
+    const customDateGroup = document.getElementById('customDateGroup');
+    if (customDateGroup) {
+        customDateGroup.hidden = e.target.value !== 'custom';
+    }
+}
+
+function setupModalCloseHandlers() {
+    // Report modal
+    const reportModal = document.getElementById('reportModal');
+    const reportModalClose = document.getElementById('reportModalClose');
+
+    if (reportModalClose) {
+        reportModalClose.addEventListener('click', () => closeModal(reportModal));
+    }
+
+    // Help modal
     const helpModal = document.getElementById('helpModal');
-    const helpCloseBtn = document.getElementById('helpModalClose');
-    helpCloseBtn.addEventListener('click', () => {
-        helpModal.style.display = 'none';
+    const helpModalClose = document.getElementById('helpModalClose');
+
+    if (helpModalClose) {
+        helpModalClose.addEventListener('click', () => closeModal(helpModal));
+    }
+
+    // Upload modal
+    const uploadModal = document.getElementById('uploadModal');
+    const uploadModalClose = document.getElementById('uploadModalClose');
+
+    if (uploadModalClose) {
+        uploadModalClose.addEventListener('click', () => closeModal(uploadModal));
+    }
+
+    // Close modals on backdrop click
+    document.querySelectorAll('.modal').forEach(modal => {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal(modal);
+            }
+        });
     });
-    window.addEventListener('click', (e) => {
-        if (e.target === helpModal) {
-            helpModal.style.display = 'none';
+
+    // Close modals on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal:not([hidden])').forEach(modal => {
+                closeModal(modal);
+            });
+        }
+    });
+}
+
+function closeModal(modal) {
+    if (modal) {
+        modal.hidden = true;
+    }
+}
+
+function openModal(modal) {
+    if (modal) {
+        modal.hidden = false;
+        // Focus first focusable element
+        const focusable = modal.querySelector('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+        if (focusable) {
+            focusable.focus();
+        }
+    }
+}
+
+// ==========================================
+// SMART AUTO-REFRESH
+// ==========================================
+
+function setupVisibilityHandler() {
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Stop auto-refresh when tab is hidden
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+        } else {
+            // Resume when tab is visible
+            startSmartRefresh();
+            // If new data was detected while away, show banner
+            if (newDataAvailable) {
+                showNewDataBanner();
+            }
+        }
+    });
+}
+
+function startSmartRefresh() {
+    if (autoRefreshInterval) return;
+
+    autoRefreshInterval = setInterval(async () => {
+        if (document.hidden) return;
+
+        try {
+            // Check for new data by fetching summary
+            const response = await fetch(`${API_BASE}/rollup/summary?${buildQueryString()}`);
+            const data = await response.json();
+            const dataHash = JSON.stringify(data);
+
+            if (lastDataHash && dataHash !== lastDataHash) {
+                newDataAvailable = true;
+                showNewDataBanner();
+            }
+            lastDataHash = dataHash;
+        } catch (error) {
+            console.error('Error checking for new data:', error);
+        }
+    }, 60000); // Check every 60 seconds
+}
+
+function showNewDataBanner() {
+    const banner = document.getElementById('newDataBanner');
+    if (banner) {
+        banner.hidden = false;
+    }
+}
+
+function hideNewDataBanner() {
+    const banner = document.getElementById('newDataBanner');
+    if (banner) {
+        banner.hidden = true;
+    }
+    newDataAvailable = false;
+}
+
+// ==========================================
+// LOADING PROGRESS
+// ==========================================
+
+function showLoadingProgress() {
+    loadingProgress.completed = 0;
+    loadingProgress.active = true;
+    const progressEl = document.getElementById('loadingProgress');
+    if (!progressEl) return;
+
+    const progressBar = progressEl.querySelector('.loading-progress-bar');
+    const progressText = progressEl.querySelector('.loading-progress-text');
+
+    progressEl.classList.add('active');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.textContent = 'Loading dashboard...';
+}
+
+function updateLoadingProgress() {
+    if (!loadingProgress.active) return;
+
+    loadingProgress.completed++;
+    const percent = Math.round((loadingProgress.completed / loadingProgress.total) * 100);
+    const progressEl = document.getElementById('loadingProgress');
+    if (!progressEl) return;
+
+    const progressBar = progressEl.querySelector('.loading-progress-bar');
+    const progressText = progressEl.querySelector('.loading-progress-text');
+
+    if (progressBar) progressBar.style.width = `${percent}%`;
+    if (progressText) progressText.textContent = `Loading (${loadingProgress.completed}/${loadingProgress.total})...`;
+
+    if (loadingProgress.completed >= loadingProgress.total) {
+        setTimeout(hideLoadingProgress, 500);
+    }
+}
+
+function hideLoadingProgress() {
+    loadingProgress.active = false;
+    const progressEl = document.getElementById('loadingProgress');
+    if (progressEl) {
+        progressEl.classList.remove('active');
+    }
+}
+
+// ==========================================
+// SECONDARY CHARTS TOGGLE
+// ==========================================
+
+function toggleSecondaryCharts() {
+    const button = document.getElementById('toggleSecondaryCharts');
+    const content = document.getElementById('secondaryChartsContent');
+
+    if (!button || !content) return;
+
+    secondaryChartsVisible = !secondaryChartsVisible;
+    content.hidden = !secondaryChartsVisible;
+    button.setAttribute('aria-expanded', secondaryChartsVisible.toString());
+
+    // Update button text
+    const textSpan = button.querySelector('span:not(.section-toggle-hint)');
+    if (textSpan) {
+        textSpan.textContent = secondaryChartsVisible ? 'Hide Analytics' : 'Show More Analytics';
+    }
+
+    // Load secondary charts if shown for first time
+    if (secondaryChartsVisible && !alignmentChart) {
+        loadSecondaryCharts();
+    }
+}
+
+async function loadSecondaryCharts() {
+    showChartSkeleton('alignmentChart');
+    showChartSkeleton('complianceChart');
+    showChartSkeleton('failureTrendChart');
+    showChartSkeleton('topOrganizationsChart');
+
+    await Promise.all([
+        loadAlignmentChart().then(updateLoadingProgress),
+        loadComplianceChart().then(updateLoadingProgress),
+        loadFailureTrendChart().then(updateLoadingProgress),
+        loadTopOrganizationsChart().then(updateLoadingProgress)
+    ]);
+}
+
+// ==========================================
+// TABLE SORTING
+// ==========================================
+
+let currentSort = { column: null, direction: 'none' };
+
+function setupTableSorting() {
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.addEventListener('click', () => {
+            const column = th.dataset.sort;
+            handleSort(column, th);
+        });
+    });
+}
+
+function handleSort(column, th) {
+    // Reset all other headers
+    document.querySelectorAll('th.sortable').forEach(header => {
+        if (header !== th) {
+            header.setAttribute('aria-sort', 'none');
         }
     });
 
-    // Refresh every 30 seconds
-    setInterval(loadDashboard, 30000);
-});
+    // Toggle sort direction
+    if (currentSort.column === column) {
+        if (currentSort.direction === 'ascending') {
+            currentSort.direction = 'descending';
+        } else if (currentSort.direction === 'descending') {
+            currentSort.direction = 'none';
+            currentSort.column = null;
+        } else {
+            currentSort.direction = 'ascending';
+        }
+    } else {
+        currentSort.column = column;
+        currentSort.direction = 'ascending';
+    }
+
+    th.setAttribute('aria-sort', currentSort.direction);
+
+    // Reload data with sort parameters
+    loadDashboard();
+}
+
+// ==========================================
+// FILTER COUNT
+// ==========================================
+
+function updateFilterCount() {
+    const countEl = document.getElementById('activeFilterCount');
+    if (!countEl) return;
+
+    let count = 0;
+    if (document.getElementById('sourceIpFilter')?.value) count++;
+    if (document.getElementById('sourceIpRangeFilter')?.value) count++;
+    if (document.getElementById('dkimFilter')?.value) count++;
+    if (document.getElementById('spfFilter')?.value) count++;
+    if (document.getElementById('dispositionFilter')?.value) count++;
+    if (document.getElementById('orgNameFilter')?.value) count++;
+
+    countEl.textContent = count.toString();
+    countEl.hidden = count === 0;
+}
 
 // Load all dashboard data
 async function loadDashboard() {
+    // Show loading progress
+    showLoadingProgress();
+
     // Show skeleton loading states
     showStatsSkeleton();
     showTableSkeleton();
@@ -337,33 +676,66 @@ async function loadDashboard() {
     showChartSkeleton('domainChart');
     showChartSkeleton('sourceIpChart');
     showChartSkeleton('dispositionChart');
-    showChartSkeleton('alignmentChart');
-    showChartSkeleton('complianceChart');
-    showChartSkeleton('failureTrendChart');
-    showChartSkeleton('topOrganizationsChart');
 
-    // Load all components in parallel, handling errors individually
-    const loadTasks = [
+    // Only load secondary charts if visible
+    if (secondaryChartsVisible) {
+        showChartSkeleton('alignmentChart');
+        showChartSkeleton('complianceChart');
+        showChartSkeleton('failureTrendChart');
+        showChartSkeleton('topOrganizationsChart');
+    }
+
+    // Primary load tasks (always load)
+    const primaryTasks = [
         { fn: loadStats, name: 'stats' },
         { fn: loadTimelineChart, name: 'timelineChart' },
         { fn: loadDomainChart, name: 'domainChart' },
         { fn: loadSourceIpChart, name: 'sourceIpChart' },
         { fn: loadDispositionChart, name: 'dispositionChart' },
-        { fn: loadAlignmentChart, name: 'alignmentChart' },
-        { fn: loadComplianceChart, name: 'complianceChart' },
-        { fn: loadFailureTrendChart, name: 'failureTrendChart' },
-        { fn: loadTopOrganizationsChart, name: 'topOrganizationsChart' },
         { fn: loadReportsTable, name: 'reportsTable' },
         { fn: loadDomainFilter, name: 'domainFilter' }
     ];
 
-    const results = await Promise.allSettled(loadTasks.map(task => task.fn()));
+    // Secondary tasks (only load if visible)
+    const secondaryTasks = secondaryChartsVisible ? [
+        { fn: loadAlignmentChart, name: 'alignmentChart' },
+        { fn: loadComplianceChart, name: 'complianceChart' },
+        { fn: loadFailureTrendChart, name: 'failureTrendChart' },
+        { fn: loadTopOrganizationsChart, name: 'topOrganizationsChart' }
+    ] : [];
+
+    const allTasks = [...primaryTasks, ...secondaryTasks];
+    loadingProgress.total = allTasks.length;
+
+    // Load all with progress tracking
+    const results = await Promise.allSettled(
+        allTasks.map(async task => {
+            try {
+                await task.fn();
+                updateLoadingProgress();
+            } catch (error) {
+                updateLoadingProgress();
+                throw error;
+            }
+        })
+    );
+
+    // Update last data hash for smart refresh
+    try {
+        const response = await fetch(`${API_BASE}/rollup/summary?${buildQueryString()}`);
+        const data = await response.json();
+        lastDataHash = JSON.stringify(data);
+    } catch (e) {
+        // Ignore
+    }
 
     // Check for any failures
     const failures = results.filter((r, i) => r.status === 'rejected');
     if (failures.length > 0) {
         console.error('Some dashboard components failed to load:', failures);
     }
+
+    hideLoadingProgress();
 }
 
 // Load domain filter dropdown
@@ -401,6 +773,10 @@ function applyFilters() {
         currentFilters.startDate = document.getElementById('startDate').value;
         currentFilters.endDate = document.getElementById('endDate').value;
         currentFilters.days = null;
+    } else if (dateRangeFilter === 'all') {
+        currentFilters.days = null; // No date restriction
+        currentFilters.startDate = null;
+        currentFilters.endDate = null;
     } else {
         currentFilters.days = parseInt(dateRangeFilter);
         currentFilters.startDate = null;
@@ -414,6 +790,9 @@ function applyFilters() {
     currentFilters.spfResult = document.getElementById('spfFilter').value;
     currentFilters.disposition = document.getElementById('dispositionFilter').value;
     currentFilters.orgName = document.getElementById('orgNameFilter').value;
+
+    // Update filter count
+    updateFilterCount();
 
     loadDashboard();
 }
@@ -845,16 +1224,40 @@ async function loadReportsTable() {
     const data = await response.json();
 
     const tbody = document.getElementById('reportsTableBody');
+    const table = document.getElementById('reportsTable');
+    const emptyState = document.getElementById('tableEmptyState');
+    const countEl = document.getElementById('tableResultCount');
+
     tbody.textContent = ''; // Clear existing content
 
-    if (data.reports.length === 0) {
-        const row = tbody.insertRow();
-        const cell = row.insertCell();
-        cell.colSpan = 6;
-        cell.className = 'loading';
-        cell.textContent = 'No reports found';
+    // Update result count
+    if (countEl) {
+        countEl.textContent = `${data.reports?.length || 0} reports`;
+    }
+
+    if (!data.reports || data.reports.length === 0) {
+        // Show empty state
+        if (table) table.style.display = 'none';
+        if (emptyState) {
+            emptyState.hidden = false;
+            // Update empty state message based on filters
+            const descEl = document.getElementById('emptyStateDescription');
+            if (descEl) {
+                const hasFilters = currentFilters.domain ||
+                    currentFilters.sourceIp ||
+                    currentFilters.dkimResult ||
+                    currentFilters.spfResult;
+                descEl.textContent = hasFilters
+                    ? 'No DMARC reports match your current filters. Try adjusting your search criteria.'
+                    : 'No DMARC reports found. Upload reports or check your email inbox for new reports.';
+            }
+        }
         return;
     }
+
+    // Hide empty state, show table
+    if (table) table.style.display = 'table';
+    if (emptyState) emptyState.hidden = true;
 
     data.reports.forEach(report => {
         const row = tbody.insertRow();
@@ -875,14 +1278,29 @@ async function loadReportsTable() {
         const totalCell = row.insertCell();
         totalCell.textContent = report.total_messages?.toLocaleString() || 0;
 
-        // Pass/Fail - for now show record count
-        const passFailCell = row.insertCell();
-        passFailCell.textContent = `${report.record_count} records`;
+        // Status - Show pass/fail with badges (safe DOM methods)
+        const statusCell = row.insertCell();
+        const passCount = report.pass_count || 0;
+        const failCount = report.fail_count || 0;
+        const total = passCount + failCount;
+        const passRate = total > 0 ? Math.round((passCount / total) * 100) : 0;
+
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        if (passRate >= 90) {
+            badge.classList.add('badge-success');
+        } else if (passRate >= 70) {
+            badge.classList.add('badge-warning');
+        } else {
+            badge.classList.add('badge-danger');
+        }
+        badge.textContent = `${passRate}% pass`;
+        statusCell.appendChild(badge);
 
         // Actions
         const actionsCell = row.insertCell();
         const viewBtn = document.createElement('button');
-        viewBtn.className = 'btn-small';
+        viewBtn.className = 'btn-secondary btn-sm';
         viewBtn.textContent = 'View';
         viewBtn.addEventListener('click', () => viewReport(report.id));
         actionsCell.appendChild(viewBtn);
@@ -893,9 +1311,20 @@ async function loadReportsTable() {
 async function viewReport(id) {
     const modal = document.getElementById('reportModal');
     const modalBody = document.getElementById('reportModalBody');
+    const breadcrumb = document.getElementById('reportModalBreadcrumb');
+    const title = document.getElementById('reportModalTitle');
 
-    modal.style.display = 'block';
-    modalBody.innerHTML = '<div class="loading">Loading report details...</div>';
+    openModal(modal);
+    modalBody.textContent = '';
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    loadingDiv.textContent = 'Loading report details...';
+    modalBody.appendChild(loadingDiv);
+
+    // Update breadcrumb
+    if (breadcrumb) {
+        breadcrumb.textContent = 'Reports';
+    }
 
     try {
         const response = await fetch(`${API_BASE}/reports/${id}`);
@@ -1170,15 +1599,15 @@ async function triggerIngest() {
     }
 }
 
-// Upload modal functions
+// Modal functions
 function openHelpModal() {
     const modal = document.getElementById('helpModal');
-    modal.style.display = 'block';
+    openModal(modal);
 }
 
 function openUploadModal() {
     const modal = document.getElementById('uploadModal');
-    modal.style.display = 'block';
+    openModal(modal);
     resetUploadModal();
     setupUploadListeners();
 }
