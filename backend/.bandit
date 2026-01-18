@@ -1,0 +1,27 @@
+[bandit]
+# Exclude test directories and virtual environments
+exclude_dirs = tests,venv,.venv,env,.env
+
+# Skip low severity issues in these paths
+skips = B101,B311
+
+# Severity levels to include
+severity_filter = medium,high
+
+# Confidence levels to include
+confidence_filter = medium,high
+
+# Number of lines to show in output
+line_length = 160
+
+# Output format
+format = json
+
+# Aggregate output by vulnerability or by filename
+aggregate = vuln
+
+# Quiet mode (less output)
+quiet = false
+
+# Recursive mode
+recursive = true

@@ -1,0 +1,67 @@
+# OWASP ZAP Baseline Scan Rules
+# Format: <rule_id>	<action>	<optional_description>
+# Actions: IGNORE, WARN, FAIL
+
+# Informational alerts - Ignore
+10015	IGNORE	# Incomplete or No Cache-control and Pragma HTTP Header Set
+10027	IGNORE	# Information Disclosure - Suspicious Comments
+10096	IGNORE	# Timestamp Disclosure - Unix
+10109	IGNORE	# Modern Web Application
+
+# Low risk - Warn only
+10020	WARN	# X-Frame-Options Header Not Set
+10021	WARN	# X-Content-Type-Options Header Missing
+10035	WARN	# Strict-Transport-Security Header Not Set
+10036	WARN	# Server Leaks Version Information
+10037	WARN	# Server Leaks Information via "X-Powered-By"
+10038	WARN	# Content Security Policy (CSP) Header Not Set
+10063	WARN	# Feature Policy Header Not Set
+
+# Medium risk - Fail
+10010	FAIL	# Cookie No HttpOnly Flag
+10011	FAIL	# Cookie Without Secure Flag
+10017	FAIL	# Cross-Domain JavaScript Source File Inclusion
+10019	FAIL	# Content-Type Header Missing
+10023	FAIL	# Information Disclosure - Debug Error Messages
+10024	FAIL	# Information Disclosure - Sensitive Information in URL
+10025	FAIL	# Information Disclosure - Sensitive Information in HTTP Referrer Header
+10032	FAIL	# Viewstate without MAC Signature
+10040	FAIL	# Secure Pages Include Mixed Content
+10054	FAIL	# Cookie Without SameSite Attribute
+10055	FAIL	# CSP: Wildcard Directive
+10056	FAIL	# CSP: Script-src Unsafe-inline
+10057	FAIL	# CSP: Style-src Unsafe-inline
+10098	FAIL	# Cross-Domain Misconfiguration
+
+# High risk - Always fail
+10016	FAIL	# Web Browser XSS Protection Not Enabled
+10026	FAIL	# HTTP Parameter Pollution
+10029	FAIL	# Cookie Poisoning
+10031	FAIL	# User Controllable HTML Element Attribute
+10034	FAIL	# Heartbleed OpenSSL Vulnerability
+10045	FAIL	# Source Code Disclosure - /WEB-INF folder
+10095	FAIL	# Backup File Disclosure
+10105	FAIL	# Weak Authentication Method
+10106	FAIL	# HTTP Only Site
+20012	FAIL	# Anti-CSRF Tokens Check
+20019	FAIL	# External Redirect
+
+# SQL Injection - Always fail
+40018	FAIL	# SQL Injection
+40019	FAIL	# SQL Injection - MySQL
+40020	FAIL	# SQL Injection - Hypersonic SQL
+40021	FAIL	# SQL Injection - Oracle
+40022	FAIL	# SQL Injection - PostgreSQL
+40024	FAIL	# SQL Injection - SQLite
+
+# XSS - Always fail
+40012	FAIL	# Cross Site Scripting (Reflected)
+40014	FAIL	# Cross Site Scripting (Persistent)
+40016	FAIL	# Cross Site Scripting (Persistent) - Prime
+40017	FAIL	# Cross Site Scripting (Persistent) - Spider
+
+# Path Traversal - Always fail
+6	FAIL	# Path Traversal
+
+# Command Injection - Always fail
+90020	FAIL	# Remote OS Command Injection
