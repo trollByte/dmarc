@@ -534,7 +534,7 @@ class TestUploadEndpoint:
         assert data["invalid_files"] == 1
         assert data["uploaded"] == 0
         assert data["files"][0]["status"] == "invalid"
-        assert "Invalid file extension" in data["files"][0]["error_message"]
+        assert "Invalid file type" in data["files"][0]["error_message"]
 
     def test_upload_without_auto_process(self, client, db_session, sample_xml):
         """Test uploading without auto-processing"""
@@ -634,9 +634,9 @@ class TestAuthentication:
         monkeypatch.setattr("app.middleware.auth.get_settings", mock_get_settings)
 
         # Test email ingestion trigger
-        response = client.post("/api/trigger/email-ingestion")
+        response = client.post("/api/ingest/trigger")
         assert response.status_code == 401
 
         # Test processing trigger
-        response = client.post("/api/trigger/process-reports")
+        response = client.post("/api/process/trigger")
         assert response.status_code == 401
