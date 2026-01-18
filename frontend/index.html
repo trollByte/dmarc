@@ -18,6 +18,17 @@
                 <span class="header-subtitle">Email Authentication Analytics</span>
             </div>
             <div class="header-actions">
+                <!-- Global Search -->
+                <div class="global-search">
+                    <input type="text" id="globalSearchInput" class="global-search-input" placeholder="Search reports, IPs, domains..." aria-label="Global search" autocomplete="off">
+                    <kbd class="kbd global-search-kbd">s</kbd>
+                    <svg class="icon global-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <div id="globalSearchResults" class="global-search-results" hidden aria-live="polite"></div>
+                </div>
+
                 <!-- Primary Actions -->
                 <div class="action-group action-group-primary">
                     <div class="dropdown">
@@ -433,21 +444,77 @@
 
     <!-- Report Detail Modal -->
     <div id="reportModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle" hidden>
-        <div class="modal-content">
+        <div class="modal-content modal-large modal-tabbed">
             <div class="modal-header">
                 <nav class="modal-breadcrumb" aria-label="Modal navigation">
                     <span id="reportModalBreadcrumb">Reports</span>
                 </nav>
                 <h2 id="reportModalTitle">Report Details</h2>
-                <button class="modal-close" aria-label="Close modal" id="reportModalClose">
-                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                <div class="modal-header-actions">
+                    <button class="btn-icon" id="reportCopyBtn" aria-label="Copy report ID" title="Copy report ID">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                    <button class="modal-close" aria-label="Close modal" id="reportModalClose">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <!-- Tab Navigation -->
+            <div class="modal-tabs" role="tablist" aria-label="Report sections">
+                <button class="modal-tab active" role="tab" aria-selected="true" aria-controls="tab-overview" id="tab-btn-overview">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
                     </svg>
+                    Overview
+                </button>
+                <button class="modal-tab" role="tab" aria-selected="false" aria-controls="tab-records" id="tab-btn-records">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                    Records
+                    <span class="tab-badge" id="records-count"></span>
+                </button>
+                <button class="modal-tab" role="tab" aria-selected="false" aria-controls="tab-policy" id="tab-btn-policy">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    Policy
+                </button>
+                <button class="modal-tab" role="tab" aria-selected="false" aria-controls="tab-raw" id="tab-btn-raw">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="16 18 22 12 16 6"></polyline>
+                        <polyline points="8 6 2 12 8 18"></polyline>
+                    </svg>
+                    Raw XML
                 </button>
             </div>
-            <div class="modal-body" id="reportModalBody">
-                <div class="loading">Loading...</div>
+            <!-- Tab Panels -->
+            <div class="modal-body modal-tab-content" id="reportModalBody">
+                <div id="tab-overview" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-overview">
+                    <div class="loading">Loading...</div>
+                </div>
+                <div id="tab-records" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-records" hidden>
+                    <div class="loading">Loading records...</div>
+                </div>
+                <div id="tab-policy" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-policy" hidden>
+                    <div class="loading">Loading policy...</div>
+                </div>
+                <div id="tab-raw" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-raw" hidden>
+                    <div class="loading">Loading XML...</div>
+                </div>
             </div>
         </div>
     </div>
@@ -526,6 +593,140 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Onboarding Wizard Modal -->
+    <div id="onboardingModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="onboardingModalTitle" hidden>
+        <div class="modal-content modal-onboarding">
+            <div class="onboarding-progress">
+                <div class="onboarding-progress-bar" id="onboardingProgressBar"></div>
+            </div>
+            <div class="modal-header onboarding-header">
+                <h2 id="onboardingModalTitle">Welcome to DMARC Dashboard</h2>
+                <button class="modal-close" aria-label="Skip onboarding" id="onboardingSkip" title="Skip tutorial">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body onboarding-body">
+                <!-- Step 1: Welcome -->
+                <div class="onboarding-step" id="onboardingStep1" data-step="1">
+                    <div class="onboarding-illustration">
+                        <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="20" y="30" width="160" height="90" rx="8" fill="var(--bg-tertiary)" stroke="var(--accent-primary)" stroke-width="2"/>
+                            <rect x="30" y="45" width="40" height="25" rx="4" fill="var(--accent-success)" opacity="0.3"/>
+                            <rect x="80" y="45" width="40" height="25" rx="4" fill="var(--accent-primary)" opacity="0.3"/>
+                            <rect x="130" y="45" width="40" height="25" rx="4" fill="var(--accent-danger)" opacity="0.3"/>
+                            <rect x="30" y="80" width="140" height="30" rx="4" fill="var(--bg-hover)"/>
+                            <circle cx="100" cy="95" r="8" fill="var(--accent-primary)"/>
+                        </svg>
+                    </div>
+                    <h3>Monitor Your Email Authentication</h3>
+                    <p>DMARC Dashboard helps you visualize and analyze DMARC reports from email providers, giving you insights into your domain's email security.</p>
+                </div>
+
+                <!-- Step 2: Import Reports -->
+                <div class="onboarding-step" id="onboardingStep2" data-step="2" hidden>
+                    <div class="onboarding-illustration">
+                        <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="50" y="60" width="100" height="70" rx="8" fill="var(--bg-tertiary)" stroke="var(--border-color)" stroke-width="2" stroke-dasharray="5 5"/>
+                            <path d="M100 80 L100 110 M85 95 L100 80 L115 95" stroke="var(--accent-primary)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <rect x="70" y="30" width="60" height="40" rx="4" fill="var(--card-bg)" stroke="var(--border-color)" stroke-width="2"/>
+                            <text x="100" y="55" text-anchor="middle" font-size="10" fill="var(--text-secondary)">.xml</text>
+                        </svg>
+                    </div>
+                    <h3>Import Your DMARC Reports</h3>
+                    <p>Upload XML reports directly, or connect your email inbox to automatically ingest reports. We support .xml, .gz, and .zip files.</p>
+                    <div class="onboarding-actions-inline">
+                        <button class="btn-secondary btn-sm" id="onboardingUpload">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            Upload Now
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Understand Results -->
+                <div class="onboarding-step" id="onboardingStep3" data-step="3" hidden>
+                    <div class="onboarding-illustration">
+                        <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="20" y="40" width="70" height="50" rx="4" fill="var(--accent-success)" opacity="0.2"/>
+                            <text x="55" y="70" text-anchor="middle" font-size="18" font-weight="bold" fill="var(--accent-success)">95%</text>
+                            <text x="55" y="82" text-anchor="middle" font-size="8" fill="var(--text-secondary)">Pass Rate</text>
+                            <rect x="110" y="40" width="70" height="50" rx="4" fill="var(--accent-danger)" opacity="0.2"/>
+                            <text x="145" y="70" text-anchor="middle" font-size="18" font-weight="bold" fill="var(--accent-danger)">5%</text>
+                            <text x="145" y="82" text-anchor="middle" font-size="8" fill="var(--text-secondary)">Fail Rate</text>
+                            <rect x="20" y="100" width="160" height="30" rx="4" fill="var(--bg-tertiary)"/>
+                            <circle cx="45" cy="115" r="6" fill="var(--accent-success)"/>
+                            <circle cx="85" cy="115" r="6" fill="var(--accent-warning)"/>
+                            <circle cx="125" cy="115" r="6" fill="var(--accent-danger)"/>
+                        </svg>
+                    </div>
+                    <h3>Understand Your Results</h3>
+                    <p>Track SPF and DKIM pass rates, identify failing sources, and monitor your email authentication health over time. Higher pass rates mean better protection.</p>
+                </div>
+
+                <!-- Step 4: Take Action -->
+                <div class="onboarding-step" id="onboardingStep4" data-step="4" hidden>
+                    <div class="onboarding-illustration">
+                        <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M100 30 L100 120" stroke="var(--border-color)" stroke-width="2" stroke-dasharray="4 4"/>
+                            <circle cx="100" cy="50" r="15" fill="var(--accent-primary)" opacity="0.2"/>
+                            <circle cx="100" cy="50" r="8" fill="var(--accent-primary)"/>
+                            <circle cx="100" cy="85" r="15" fill="var(--accent-warning)" opacity="0.2"/>
+                            <circle cx="100" cy="85" r="8" fill="var(--accent-warning)"/>
+                            <circle cx="100" cy="120" r="15" fill="var(--accent-success)" opacity="0.2"/>
+                            <circle cx="100" cy="120" r="8" fill="var(--accent-success)"/>
+                            <text x="130" y="54" font-size="10" fill="var(--text-primary)">Monitor</text>
+                            <text x="130" y="89" font-size="10" fill="var(--text-primary)">Investigate</text>
+                            <text x="130" y="124" font-size="10" fill="var(--text-primary)">Improve</text>
+                        </svg>
+                    </div>
+                    <h3>Take Action</h3>
+                    <p>Use filters to investigate suspicious sources, export data for analysis, and track improvements over time. Click any chart or table row for details.</p>
+                </div>
+
+                <!-- Step 5: Ready -->
+                <div class="onboarding-step" id="onboardingStep5" data-step="5" hidden>
+                    <div class="onboarding-illustration onboarding-ready">
+                        <svg viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="100" cy="75" r="50" fill="var(--accent-success)" opacity="0.1"/>
+                            <circle cx="100" cy="75" r="35" fill="var(--accent-success)" opacity="0.2"/>
+                            <path d="M80 75 L95 90 L120 60" stroke="var(--accent-success)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h3>You're All Set!</h3>
+                    <p>Start exploring your DMARC data. Need help? Click the <strong>?</strong> button anytime to learn more about DMARC, SPF, and DKIM.</p>
+                </div>
+            </div>
+            <div class="modal-footer onboarding-footer">
+                <div class="onboarding-dots" role="tablist" aria-label="Onboarding steps">
+                    <button class="onboarding-dot active" data-step="1" role="tab" aria-selected="true" aria-label="Step 1"></button>
+                    <button class="onboarding-dot" data-step="2" role="tab" aria-selected="false" aria-label="Step 2"></button>
+                    <button class="onboarding-dot" data-step="3" role="tab" aria-selected="false" aria-label="Step 3"></button>
+                    <button class="onboarding-dot" data-step="4" role="tab" aria-selected="false" aria-label="Step 4"></button>
+                    <button class="onboarding-dot" data-step="5" role="tab" aria-selected="false" aria-label="Step 5"></button>
+                </div>
+                <div class="onboarding-nav">
+                    <button class="btn-ghost" id="onboardingPrev" hidden>Back</button>
+                    <button class="btn-primary" id="onboardingNext">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feature Tooltips (contextual help) -->
+    <div id="featureTooltip" class="feature-tooltip" role="tooltip" hidden>
+        <div class="feature-tooltip-content">
+            <span class="feature-tooltip-text"></span>
+            <button class="feature-tooltip-dismiss" aria-label="Dismiss tip">Got it</button>
+        </div>
+        <div class="feature-tooltip-arrow"></div>
     </div>
 
     <!-- Help Modal -->

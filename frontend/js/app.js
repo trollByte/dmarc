@@ -40,6 +40,33 @@ let lastDataHash = null;
 // Secondary charts visibility
 let secondaryChartsVisible = false;
 
+// Onboarding state
+let onboardingState = {
+    currentStep: 1,
+    totalSteps: 5,
+    completed: false
+};
+
+// Feature tooltips queue
+const featureTooltipsQueue = [
+    { target: '#importBtn', text: 'Import DMARC reports from files or your email inbox', position: 'bottom' },
+    { target: '#dateRangeFilter', text: 'Filter reports by date range to analyze specific periods', position: 'bottom' },
+    { target: '#toggleSecondaryCharts', text: 'Click to reveal additional analytics charts', position: 'top' }
+];
+
+// Keyboard shortcuts configuration
+const keyboardShortcuts = [
+    { key: '?', description: 'Show keyboard shortcuts', action: 'showKeyboardShortcuts' },
+    { key: 'r', description: 'Refresh dashboard', action: 'refresh' },
+    { key: 'u', description: 'Upload reports', action: 'upload' },
+    { key: 'f', description: 'Focus filter bar', action: 'focusFilter' },
+    { key: 'h', description: 'Open help', action: 'help' },
+    { key: 'Escape', description: 'Close modal/dropdown', action: 'escape' },
+    { key: 't', description: 'Toggle theme', action: 'toggleTheme' },
+    { key: 'c', description: 'Toggle more charts', action: 'toggleCharts' },
+    { key: 's', description: 'Focus search (global)', action: 'focusSearch' }
+];
+
 // ==========================================
 // THEME MANAGEMENT
 // ==========================================
@@ -92,6 +119,863 @@ function updateChartTheme(theme) {
             chart.update();
         }
     });
+}
+
+// ==========================================
+// ONBOARDING WIZARD
+// ==========================================
+
+function checkFirstRun() {
+    const hasCompletedOnboarding = localStorage.getItem('dmarc-onboarding-completed');
+    return !hasCompletedOnboarding;
+}
+
+function showOnboarding() {
+    const modal = document.getElementById('onboardingModal');
+    if (modal) {
+        modal.hidden = false;
+        updateOnboardingStep(1);
+        setupOnboardingListeners();
+    }
+}
+
+function setupOnboardingListeners() {
+    const nextBtn = document.getElementById('onboardingNext');
+    const prevBtn = document.getElementById('onboardingPrev');
+    const skipBtn = document.getElementById('onboardingSkip');
+    const uploadBtn = document.getElementById('onboardingUpload');
+    const dots = document.querySelectorAll('.onboarding-dot');
+
+    nextBtn?.addEventListener('click', goToNextStep);
+    prevBtn?.addEventListener('click', goToPrevStep);
+    skipBtn?.addEventListener('click', completeOnboarding);
+    uploadBtn?.addEventListener('click', () => {
+        completeOnboarding();
+        openUploadModal();
+    });
+
+    dots.forEach(dot => {
+        dot.addEventListener('click', () => {
+            const step = parseInt(dot.dataset.step, 10);
+            goToStep(step);
+        });
+    });
+}
+
+function goToNextStep() {
+    if (onboardingState.currentStep < onboardingState.totalSteps) {
+        goToStep(onboardingState.currentStep + 1);
+    } else {
+        completeOnboarding();
+    }
+}
+
+function goToPrevStep() {
+    if (onboardingState.currentStep > 1) {
+        goToStep(onboardingState.currentStep - 1);
+    }
+}
+
+function goToStep(step) {
+    onboardingState.currentStep = step;
+    updateOnboardingStep(step);
+}
+
+function updateOnboardingStep(step) {
+    // Update progress bar
+    const progressBar = document.getElementById('onboardingProgressBar');
+    if (progressBar) {
+        progressBar.style.width = `${(step / onboardingState.totalSteps) * 100}%`;
+    }
+
+    // Update step visibility
+    for (let i = 1; i <= onboardingState.totalSteps; i++) {
+        const stepEl = document.getElementById(`onboardingStep${i}`);
+        if (stepEl) {
+            stepEl.hidden = i !== step;
+        }
+    }
+
+    // Update dots
+    document.querySelectorAll('.onboarding-dot').forEach(dot => {
+        const dotStep = parseInt(dot.dataset.step, 10);
+        dot.classList.remove('active', 'completed');
+        dot.setAttribute('aria-selected', 'false');
+
+        if (dotStep === step) {
+            dot.classList.add('active');
+            dot.setAttribute('aria-selected', 'true');
+        } else if (dotStep < step) {
+            dot.classList.add('completed');
+        }
+    });
+
+    // Update navigation buttons
+    const prevBtn = document.getElementById('onboardingPrev');
+    const nextBtn = document.getElementById('onboardingNext');
+
+    if (prevBtn) {
+        prevBtn.hidden = step === 1;
+    }
+
+    if (nextBtn) {
+        nextBtn.textContent = step === onboardingState.totalSteps ? 'Get Started' : 'Next';
+    }
+
+    // Update modal title based on step
+    const titles = [
+        'Welcome to DMARC Dashboard',
+        'Import Your Reports',
+        'Understand Your Data',
+        'Take Action',
+        'Ready to Go!'
+    ];
+    const title = document.getElementById('onboardingModalTitle');
+    if (title && titles[step - 1]) {
+        title.textContent = titles[step - 1];
+    }
+}
+
+function completeOnboarding() {
+    localStorage.setItem('dmarc-onboarding-completed', 'true');
+    onboardingState.completed = true;
+
+    const modal = document.getElementById('onboardingModal');
+    if (modal) {
+        modal.hidden = true;
+    }
+
+    // Start showing feature tooltips after onboarding
+    setTimeout(showNextFeatureTooltip, 1000);
+}
+
+// ==========================================
+// FEATURE TOOLTIPS (Contextual Help)
+// ==========================================
+
+let currentTooltipIndex = 0;
+let seenTooltips = JSON.parse(localStorage.getItem('dmarc-seen-tooltips') || '[]');
+
+function showNextFeatureTooltip() {
+    const tooltip = document.getElementById('featureTooltip');
+    if (!tooltip) return;
+
+    // Find next unseen tooltip
+    while (currentTooltipIndex < featureTooltipsQueue.length) {
+        const tooltipConfig = featureTooltipsQueue[currentTooltipIndex];
+        if (!seenTooltips.includes(tooltipConfig.target)) {
+            showFeatureTooltip(tooltipConfig);
+            return;
+        }
+        currentTooltipIndex++;
+    }
+}
+
+function showFeatureTooltip(config) {
+    const tooltip = document.getElementById('featureTooltip');
+    const targetEl = document.querySelector(config.target);
+
+    if (!tooltip || !targetEl) return;
+
+    // Set tooltip content
+    const textEl = tooltip.querySelector('.feature-tooltip-text');
+    if (textEl) {
+        textEl.textContent = config.text;
+    }
+
+    // Position tooltip
+    const targetRect = targetEl.getBoundingClientRect();
+    tooltip.setAttribute('data-position', config.position);
+
+    // Calculate position
+    let top, left;
+    const tooltipPadding = 12;
+
+    switch (config.position) {
+        case 'bottom':
+            top = targetRect.bottom + tooltipPadding;
+            left = targetRect.left + (targetRect.width / 2);
+            break;
+        case 'top':
+            top = targetRect.top - tooltipPadding;
+            left = targetRect.left + (targetRect.width / 2);
+            break;
+        case 'left':
+            top = targetRect.top + (targetRect.height / 2);
+            left = targetRect.left - tooltipPadding;
+            break;
+        case 'right':
+            top = targetRect.top + (targetRect.height / 2);
+            left = targetRect.right + tooltipPadding;
+            break;
+        default:
+            top = targetRect.bottom + tooltipPadding;
+            left = targetRect.left + (targetRect.width / 2);
+    }
+
+    tooltip.style.top = `${top}px`;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.transform = config.position === 'bottom' || config.position === 'top'
+        ? 'translateX(-50%)'
+        : 'translateY(-50%)';
+
+    if (config.position === 'top') {
+        tooltip.style.transform = 'translateX(-50%) translateY(-100%)';
+    }
+
+    tooltip.hidden = false;
+
+    // Setup dismiss handler
+    const dismissBtn = tooltip.querySelector('.feature-tooltip-dismiss');
+    const dismissHandler = () => {
+        dismissFeatureTooltip(config.target);
+        dismissBtn?.removeEventListener('click', dismissHandler);
+    };
+    dismissBtn?.addEventListener('click', dismissHandler);
+}
+
+function dismissFeatureTooltip(target) {
+    const tooltip = document.getElementById('featureTooltip');
+    if (tooltip) {
+        tooltip.hidden = true;
+    }
+
+    // Mark as seen
+    seenTooltips.push(target);
+    localStorage.setItem('dmarc-seen-tooltips', JSON.stringify(seenTooltips));
+
+    // Show next tooltip after delay
+    currentTooltipIndex++;
+    setTimeout(showNextFeatureTooltip, 3000);
+}
+
+// ==========================================
+// WELCOME EMPTY STATE
+// ==========================================
+
+function showWelcomeEmptyState() {
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    // Hide all sections
+    const sections = mainContent.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
+    sections.forEach(section => {
+        section.style.display = 'none';
+    });
+
+    // Create welcome state
+    const welcomeDiv = document.createElement('div');
+    welcomeDiv.className = 'welcome-empty-state';
+    welcomeDiv.id = 'welcomeEmptyState';
+
+    // Icon
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('fill', 'none');
+    icon.setAttribute('stroke', 'currentColor');
+    icon.setAttribute('stroke-width', '1.5');
+    icon.classList.add('welcome-empty-state-icon');
+    icon.innerHTML = `
+        <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round"/>
+    `;
+    welcomeDiv.appendChild(icon);
+
+    // Title
+    const title = document.createElement('h2');
+    title.textContent = 'Welcome to DMARC Dashboard';
+    welcomeDiv.appendChild(title);
+
+    // Description
+    const desc = document.createElement('p');
+    desc.textContent = 'Get started by importing your first DMARC reports. You can upload XML files directly or connect your email inbox to automatically receive reports.';
+    welcomeDiv.appendChild(desc);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'welcome-empty-state-actions';
+
+    const uploadBtn = document.createElement('button');
+    uploadBtn.className = 'btn-primary';
+    uploadBtn.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        Upload Reports
+    `;
+    uploadBtn.addEventListener('click', openUploadModal);
+    actions.appendChild(uploadBtn);
+
+    const learnBtn = document.createElement('button');
+    learnBtn.className = 'btn-secondary';
+    learnBtn.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        Learn About DMARC
+    `;
+    learnBtn.addEventListener('click', openHelpModal);
+    actions.appendChild(learnBtn);
+
+    welcomeDiv.appendChild(actions);
+
+    // Features grid
+    const features = document.createElement('div');
+    features.className = 'welcome-empty-state-features';
+
+    const featureData = [
+        { icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z', title: 'Security Insights', desc: 'Monitor authentication' },
+        { icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', title: 'Visual Analytics', desc: 'Charts and trends' },
+        { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', title: 'Real-time Updates', desc: 'Auto-refresh data' }
+    ];
+
+    featureData.forEach(f => {
+        const feature = document.createElement('div');
+        feature.className = 'welcome-feature';
+
+        const fIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        fIcon.setAttribute('viewBox', '0 0 24 24');
+        fIcon.setAttribute('fill', 'none');
+        fIcon.setAttribute('stroke', 'currentColor');
+        fIcon.setAttribute('stroke-width', '1.5');
+        fIcon.classList.add('welcome-feature-icon');
+        fIcon.innerHTML = `<path d="${f.icon}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        feature.appendChild(fIcon);
+
+        const fTitle = document.createElement('h4');
+        fTitle.textContent = f.title;
+        feature.appendChild(fTitle);
+
+        const fDesc = document.createElement('p');
+        fDesc.textContent = f.desc;
+        feature.appendChild(fDesc);
+
+        features.appendChild(feature);
+    });
+
+    welcomeDiv.appendChild(features);
+
+    mainContent.appendChild(welcomeDiv);
+}
+
+function hideWelcomeEmptyState() {
+    const welcomeState = document.getElementById('welcomeEmptyState');
+    if (welcomeState) {
+        welcomeState.remove();
+    }
+
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+        const sections = mainContent.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
+        sections.forEach(section => {
+            section.style.display = '';
+        });
+    }
+}
+
+// ==========================================
+// GLOBAL SEARCH
+// ==========================================
+
+let searchDebounceTimer = null;
+let searchCache = {
+    domains: [],
+    organizations: [],
+    sourceIps: []
+};
+
+function setupGlobalSearch() {
+    const searchInput = document.getElementById('globalSearchInput');
+    const searchResults = document.getElementById('globalSearchResults');
+
+    if (!searchInput || !searchResults) return;
+
+    // Hide kbd hint on focus
+    searchInput.addEventListener('focus', () => {
+        const kbd = searchInput.parentElement.querySelector('.global-search-kbd');
+        if (kbd) kbd.style.display = 'none';
+    });
+
+    searchInput.addEventListener('blur', () => {
+        const kbd = searchInput.parentElement.querySelector('.global-search-kbd');
+        if (kbd) kbd.style.display = '';
+        // Delay hiding results to allow click
+        setTimeout(() => {
+            if (!searchResults.contains(document.activeElement)) {
+                searchResults.hidden = true;
+            }
+        }, 200);
+    });
+
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim();
+
+        clearTimeout(searchDebounceTimer);
+
+        if (query.length < 2) {
+            searchResults.hidden = true;
+            return;
+        }
+
+        searchDebounceTimer = setTimeout(() => {
+            performGlobalSearch(query);
+        }, 300);
+    });
+
+    // Keyboard navigation in results
+    searchInput.addEventListener('keydown', (e) => {
+        const items = searchResults.querySelectorAll('.search-result-item');
+        const activeItem = searchResults.querySelector('.search-result-item.active');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (!activeItem && items.length > 0) {
+                items[0].classList.add('active');
+            } else if (activeItem) {
+                const index = Array.from(items).indexOf(activeItem);
+                activeItem.classList.remove('active');
+                if (index < items.length - 1) {
+                    items[index + 1].classList.add('active');
+                } else {
+                    items[0].classList.add('active');
+                }
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (activeItem) {
+                const index = Array.from(items).indexOf(activeItem);
+                activeItem.classList.remove('active');
+                if (index > 0) {
+                    items[index - 1].classList.add('active');
+                } else {
+                    items[items.length - 1].classList.add('active');
+                }
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeItem) {
+                activeItem.click();
+            }
+        }
+    });
+}
+
+async function performGlobalSearch(query) {
+    const searchResults = document.getElementById('globalSearchResults');
+    if (!searchResults) return;
+
+    // Clear previous results
+    searchResults.textContent = '';
+
+    try {
+        // Search across multiple endpoints
+        const results = await Promise.all([
+            searchDomains(query),
+            searchOrganizations(query),
+            searchSourceIps(query)
+        ]);
+
+        const [domains, organizations, sourceIps] = results;
+
+        if (domains.length === 0 && organizations.length === 0 && sourceIps.length === 0) {
+            const noResults = document.createElement('div');
+            noResults.className = 'search-no-results';
+            noResults.textContent = `No results found for "${query}"`;
+            searchResults.appendChild(noResults);
+        } else {
+            // Add domain results
+            if (domains.length > 0) {
+                const group = createSearchResultGroup('Domains', domains, 'domain');
+                searchResults.appendChild(group);
+            }
+
+            // Add organization results
+            if (organizations.length > 0) {
+                const group = createSearchResultGroup('Organizations', organizations, 'org');
+                searchResults.appendChild(group);
+            }
+
+            // Add IP results
+            if (sourceIps.length > 0) {
+                const group = createSearchResultGroup('Source IPs', sourceIps, 'ip');
+                searchResults.appendChild(group);
+            }
+        }
+
+        searchResults.hidden = false;
+    } catch (error) {
+        console.error('Search error:', error);
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'search-no-results';
+        errorDiv.textContent = 'Search failed. Please try again.';
+        searchResults.appendChild(errorDiv);
+        searchResults.hidden = false;
+    }
+}
+
+async function searchDomains(query) {
+    // Use cached domains if available
+    if (searchCache.domains.length === 0) {
+        try {
+            const response = await fetch(`${API_BASE}/reports/domains`);
+            if (response.ok) {
+                const data = await response.json();
+                searchCache.domains = data.domains || [];
+            }
+        } catch (e) {
+            console.error('Failed to fetch domains:', e);
+        }
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return searchCache.domains
+        .filter(d => d.toLowerCase().includes(lowerQuery))
+        .slice(0, 5)
+        .map(d => ({ title: d, subtitle: 'Domain' }));
+}
+
+async function searchOrganizations(query) {
+    // Use cached orgs if available
+    if (searchCache.organizations.length === 0) {
+        try {
+            const response = await fetch(`${API_BASE}/rollup/top-organizations?${buildQueryString()}`);
+            if (response.ok) {
+                const data = await response.json();
+                searchCache.organizations = data.map(o => o.org_name);
+            }
+        } catch (e) {
+            console.error('Failed to fetch organizations:', e);
+        }
+    }
+
+    const lowerQuery = query.toLowerCase();
+    return searchCache.organizations
+        .filter(o => o.toLowerCase().includes(lowerQuery))
+        .slice(0, 5)
+        .map(o => ({ title: o, subtitle: 'Organization' }));
+}
+
+async function searchSourceIps(query) {
+    // IP pattern check
+    const isIpLike = /^[\d.:\/]+$/.test(query);
+
+    if (!isIpLike && query.length < 3) return [];
+
+    try {
+        const response = await fetch(`${API_BASE}/rollup/top-source-ips?${buildQueryString()}`);
+        if (response.ok) {
+            const data = await response.json();
+            const lowerQuery = query.toLowerCase();
+            return data
+                .filter(ip => ip.source_ip.includes(lowerQuery))
+                .slice(0, 5)
+                .map(ip => ({
+                    title: ip.source_ip,
+                    subtitle: `${ip.count.toLocaleString()} messages`
+                }));
+        }
+    } catch (e) {
+        console.error('Failed to search IPs:', e);
+    }
+
+    return [];
+}
+
+function createSearchResultGroup(title, items, type) {
+    const group = document.createElement('div');
+    group.className = 'search-result-group';
+
+    const groupTitle = document.createElement('div');
+    groupTitle.className = 'search-result-group-title';
+    groupTitle.textContent = title;
+    group.appendChild(groupTitle);
+
+    items.forEach(item => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'search-result-item';
+        resultItem.setAttribute('role', 'option');
+        resultItem.setAttribute('tabindex', '-1');
+
+        // Icon based on type
+        const iconPaths = {
+            domain: 'M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9',
+            org: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4',
+            ip: 'M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01'
+        };
+
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('fill', 'none');
+        icon.setAttribute('stroke', 'currentColor');
+        icon.setAttribute('stroke-width', '1.5');
+        icon.classList.add('search-result-icon');
+        icon.innerHTML = `<path d="${iconPaths[type]}" stroke-linecap="round" stroke-linejoin="round"/>`;
+        resultItem.appendChild(icon);
+
+        const content = document.createElement('div');
+        content.className = 'search-result-content';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'search-result-title';
+        titleEl.textContent = item.title;
+        content.appendChild(titleEl);
+
+        const subtitle = document.createElement('div');
+        subtitle.className = 'search-result-subtitle';
+        subtitle.textContent = item.subtitle;
+        content.appendChild(subtitle);
+
+        resultItem.appendChild(content);
+
+        // Handle click
+        resultItem.addEventListener('click', () => {
+            applySearchResult(type, item.title);
+        });
+
+        group.appendChild(resultItem);
+    });
+
+    return group;
+}
+
+function applySearchResult(type, value) {
+    const searchInput = document.getElementById('globalSearchInput');
+    const searchResults = document.getElementById('globalSearchResults');
+
+    if (searchInput) searchInput.value = '';
+    if (searchResults) searchResults.hidden = true;
+
+    switch (type) {
+        case 'domain':
+            const domainFilter = document.getElementById('domainFilter');
+            if (domainFilter) {
+                // Find or add the domain option
+                let option = Array.from(domainFilter.options).find(o => o.value === value);
+                if (!option) {
+                    option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = value;
+                    domainFilter.appendChild(option);
+                }
+                domainFilter.value = value;
+                currentFilters.domain = value;
+            }
+            break;
+        case 'org':
+            const orgFilter = document.getElementById('orgNameFilter');
+            if (orgFilter) {
+                orgFilter.value = value;
+                currentFilters.orgName = value;
+            }
+            // Expand advanced filters if needed
+            const advPanel = document.getElementById('advancedFiltersPanel');
+            if (advPanel && advPanel.hidden) {
+                toggleAdvancedFilters();
+            }
+            break;
+        case 'ip':
+            const ipFilter = document.getElementById('sourceIpFilter');
+            if (ipFilter) {
+                ipFilter.value = value;
+                currentFilters.sourceIp = value;
+            }
+            // Expand advanced filters if needed
+            const advPanel2 = document.getElementById('advancedFiltersPanel');
+            if (advPanel2 && advPanel2.hidden) {
+                toggleAdvancedFilters();
+            }
+            break;
+    }
+
+    // Apply filters
+    applyFilters();
+    showNotification(`Filtered by ${type}: ${value}`, 'info');
+}
+
+// ==========================================
+// KEYBOARD SHORTCUTS
+// ==========================================
+
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', handleKeyboardShortcut);
+}
+
+function handleKeyboardShortcut(e) {
+    // Ignore if typing in an input field
+    const activeElement = document.activeElement;
+    const isInputActive = activeElement.tagName === 'INPUT' ||
+                         activeElement.tagName === 'TEXTAREA' ||
+                         activeElement.tagName === 'SELECT' ||
+                         activeElement.isContentEditable;
+
+    if (isInputActive && e.key !== 'Escape') return;
+
+    // Check if any modal is open (except for Escape which should close them)
+    const hasOpenModal = document.querySelector('.modal:not([hidden])');
+
+    switch (e.key) {
+        case '?':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                showKeyboardShortcutsModal();
+            }
+            break;
+        case 'r':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                hideNewDataBanner();
+                loadDashboard();
+                showNotification('Dashboard refreshed', 'info');
+            }
+            break;
+        case 'u':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                openUploadModal();
+            }
+            break;
+        case 'f':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                const domainFilter = document.getElementById('domainFilter');
+                if (domainFilter) {
+                    domainFilter.focus();
+                    showNotification('Filter bar focused', 'info');
+                }
+            }
+            break;
+        case 'h':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                openHelpModal();
+            }
+            break;
+        case 't':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                toggleTheme();
+                const theme = document.documentElement.getAttribute('data-theme');
+                showNotification(`Switched to ${theme} mode`, 'info');
+            }
+            break;
+        case 'c':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                toggleSecondaryCharts();
+            }
+            break;
+        case 's':
+            if (!hasOpenModal) {
+                e.preventDefault();
+                const searchInput = document.getElementById('globalSearchInput');
+                if (searchInput) {
+                    searchInput.focus();
+                }
+            }
+            break;
+        case 'Escape':
+            // Close any open modals or dropdowns
+            closeAllDropdowns();
+            document.querySelectorAll('.modal:not([hidden])').forEach(modal => {
+                closeModal(modal);
+            });
+            // Also hide feature tooltip
+            const tooltip = document.getElementById('featureTooltip');
+            if (tooltip) tooltip.hidden = true;
+            break;
+    }
+}
+
+function showKeyboardShortcutsModal() {
+    let modal = document.getElementById('keyboardShortcutsModal');
+
+    if (!modal) {
+        // Create modal if it doesn't exist
+        modal = document.createElement('div');
+        modal.id = 'keyboardShortcutsModal';
+        modal.className = 'modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'keyboardShortcutsTitle');
+
+        const content = document.createElement('div');
+        content.className = 'modal-content modal-shortcuts';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+
+        const title = document.createElement('h2');
+        title.id = 'keyboardShortcutsTitle';
+        title.textContent = 'Keyboard Shortcuts';
+        header.appendChild(title);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'modal-close';
+        closeBtn.setAttribute('aria-label', 'Close modal');
+        closeBtn.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        `;
+        closeBtn.addEventListener('click', () => closeModal(modal));
+        header.appendChild(closeBtn);
+
+        content.appendChild(header);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'modal-body shortcuts-body';
+
+        const shortcutsList = document.createElement('div');
+        shortcutsList.className = 'shortcuts-list';
+
+        keyboardShortcuts.forEach(shortcut => {
+            const row = document.createElement('div');
+            row.className = 'shortcut-row';
+
+            const keys = document.createElement('div');
+            keys.className = 'shortcut-keys';
+
+            const kbd = document.createElement('kbd');
+            kbd.className = 'kbd';
+            kbd.textContent = shortcut.key === 'Escape' ? 'Esc' : shortcut.key;
+            keys.appendChild(kbd);
+
+            row.appendChild(keys);
+
+            const desc = document.createElement('span');
+            desc.className = 'shortcut-description';
+            desc.textContent = shortcut.description;
+            row.appendChild(desc);
+
+            shortcutsList.appendChild(row);
+        });
+
+        body.appendChild(shortcutsList);
+
+        // Footer hint
+        const hint = document.createElement('p');
+        hint.className = 'shortcuts-hint';
+        hint.textContent = 'Press ? anytime to see these shortcuts';
+        body.appendChild(hint);
+
+        content.appendChild(body);
+        modal.appendChild(content);
+
+        // Close on backdrop click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal(modal);
+        });
+
+        document.body.appendChild(modal);
+    }
+
+    openModal(modal);
 }
 
 // ==========================================
@@ -256,8 +1140,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up dropdown menus
     setupDropdowns();
 
+    // Set up keyboard shortcuts
+    setupKeyboardShortcuts();
+
+    // Set up global search
+    setupGlobalSearch();
+
+    // Set up saved views
+    setupSavedViews();
+
+    // Set up inline validation
+    setupInlineValidation();
+
     // Set up visibility handler for smart refresh
     setupVisibilityHandler();
+
+    // Check if first run and show onboarding
+    const isFirstRun = checkFirstRun();
+    if (isFirstRun) {
+        showOnboarding();
+    }
 
     // Load dashboard with skeleton states
     await loadDashboard();
@@ -887,6 +1789,21 @@ async function loadStats() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
+        // Check if this is empty (no reports at all with no filters)
+        const hasNoData = !data.total_reports || data.total_reports === 0;
+        const hasNoFilters = !currentFilters.domain && !currentFilters.sourceIp &&
+                            !currentFilters.sourceIpRange && !currentFilters.dkimResult &&
+                            !currentFilters.spfResult && !currentFilters.disposition &&
+                            !currentFilters.orgName && currentFilters.days === 365;
+
+        if (hasNoData && hasNoFilters) {
+            // Show welcome empty state for first-time users
+            showWelcomeEmptyState();
+        } else {
+            // Ensure welcome state is hidden when we have data
+            hideWelcomeEmptyState();
+        }
+
         document.getElementById('totalReports').textContent = data.total_reports || 0;
         document.getElementById('totalMessages').textContent = data.total_messages?.toLocaleString() || 0;
         document.getElementById('passRate').textContent = data.pass_percentage ? `${data.pass_percentage.toFixed(1)}%` : '0%';
@@ -1307,23 +2224,35 @@ async function loadReportsTable() {
     });
 }
 
-// View report details
+// Current report for modal tabs
+let currentReportId = null;
+let currentReportData = null;
+
+// View report details with tabbed interface
 async function viewReport(id) {
     const modal = document.getElementById('reportModal');
-    const modalBody = document.getElementById('reportModalBody');
     const breadcrumb = document.getElementById('reportModalBreadcrumb');
     const title = document.getElementById('reportModalTitle');
 
+    currentReportId = id;
+
     openModal(modal);
-    modalBody.textContent = '';
-    const loadingDiv = document.createElement('div');
-    loadingDiv.className = 'loading';
-    loadingDiv.textContent = 'Loading report details...';
-    modalBody.appendChild(loadingDiv);
+    setupReportModalTabs();
+    resetReportModalTabs();
 
     // Update breadcrumb
     if (breadcrumb) {
         breadcrumb.textContent = 'Reports';
+    }
+
+    // Show loading in overview tab
+    const overviewTab = document.getElementById('tab-overview');
+    if (overviewTab) {
+        overviewTab.textContent = '';
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading';
+        loadingDiv.textContent = 'Loading report details...';
+        overviewTab.appendChild(loadingDiv);
     }
 
     try {
@@ -1332,113 +2261,617 @@ async function viewReport(id) {
             throw new Error('Report not found');
         }
         const report = await response.json();
+        currentReportData = report;
 
-        // Build detailed view
-        modalBody.innerHTML = `
-            <div class="report-details">
-                <div class="detail-section">
-                    <h3>Report Information</h3>
-                    <table class="detail-table">
-                        <tr>
-                            <td><strong>Organization:</strong></td>
-                            <td>${escapeHtml(report.org_name)}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Domain:</strong></td>
-                            <td>${escapeHtml(report.domain)}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Date Range:</strong></td>
-                            <td>${formatDateRange(report.date_begin, report.date_end)}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Report ID:</strong></td>
-                            <td>${escapeHtml(report.report_id)}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Email:</strong></td>
-                            <td>${escapeHtml(report.email || 'N/A')}</td>
-                        </tr>
-                    </table>
-                </div>
-                <div class="detail-section">
-                    <h3>Policy Information</h3>
-                    <table class="detail-table">
-                        <tr>
-                            <td><strong>DMARC Policy:</strong></td>
-                            <td>${escapeHtml(report.policy_p || 'N/A')}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Subdomain Policy:</strong></td>
-                            <td>${escapeHtml(report.policy_sp || 'N/A')}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Percentage:</strong></td>
-                            <td>${report.policy_pct || 100}%</td>
-                        </tr>
-                        <tr>
-                            <td><strong>DKIM Alignment:</strong></td>
-                            <td>${escapeHtml(report.policy_adkim || 'relaxed')}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>SPF Alignment:</strong></td>
-                            <td>${escapeHtml(report.policy_aspf || 'relaxed')}</td>
-                        </tr>
-                    </table>
-                </div>
-                <div class="detail-section">
-                    <h3>Statistics</h3>
-                    <table class="detail-table">
-                        <tr>
-                            <td><strong>Total Messages:</strong></td>
-                            <td>${(report.total_messages || 0).toLocaleString()}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Total Records:</strong></td>
-                            <td>${(report.record_count || 0).toLocaleString()}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Received:</strong></td>
-                            <td>${new Date(report.received_at).toLocaleString()}</td>
-                        </tr>
-                    </table>
-                </div>
-                <div class="detail-section">
-                    <h3>Authentication Records</h3>
-                    <div id="recordsInfo">
-                        <div id="recordsLoading" class="loading">Loading records...</div>
-                        <table id="recordsTable" class="records-table" style="display: none;">
-                            <thead>
-                                <tr>
-                                    <th>Source IP</th>
-                                    <th>Messages</th>
-                                    <th>DKIM</th>
-                                    <th>SPF</th>
-                                    <th>Disposition</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recordsTableBody"></tbody>
-                        </table>
-                        <div id="recordsPagination" class="pagination" style="display: none;"></div>
-                    </div>
-                </div>
-                <div id="recordDetail" class="detail-section" style="display: none;">
-                    <h3>
-                        Record Detail
-                        <button class="btn-secondary" onclick="hideRecordDetail()">← Back</button>
-                    </h3>
-                    <div id="recordDetailContent"></div>
-                </div>
-            </div>
-        `;
+        // Update title
+        if (title) {
+            title.textContent = `Report: ${report.org_name}`;
+        }
 
-        // Load records for this report
-        await loadRecordsForReport(id);
+        // Update records count badge
+        const recordsCount = document.getElementById('records-count');
+        if (recordsCount) {
+            recordsCount.textContent = report.record_count || 0;
+        }
+
+        // Build overview tab content
+        renderOverviewTab(report);
+
+        // Setup copy button
+        const copyBtn = document.getElementById('reportCopyBtn');
+        if (copyBtn) {
+            copyBtn.onclick = () => copyToClipboard(report.report_id, 'Report ID copied!');
+        }
+
     } catch (error) {
-        modalBody.innerHTML = '<div class="error">Error loading report details. Please try again.</div>';
+        const overviewTab = document.getElementById('tab-overview');
+        if (overviewTab) {
+            overviewTab.textContent = '';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = 'Error loading report details. Please try again.';
+            overviewTab.appendChild(errorDiv);
+        }
         console.error('Error loading report:', error);
     }
+}
+
+// Setup report modal tabs
+function setupReportModalTabs() {
+    const tabs = document.querySelectorAll('.modal-tab');
+    tabs.forEach(tab => {
+        // Remove existing listeners by cloning
+        const newTab = tab.cloneNode(true);
+        tab.parentNode.replaceChild(newTab, tab);
+
+        newTab.addEventListener('click', () => {
+            const targetId = newTab.getAttribute('aria-controls');
+            switchReportTab(targetId, newTab);
+        });
+    });
+}
+
+function resetReportModalTabs() {
+    // Reset to overview tab
+    const tabs = document.querySelectorAll('.modal-tab');
+    const panels = document.querySelectorAll('.tab-panel');
+
+    tabs.forEach(tab => {
+        const isOverview = tab.id === 'tab-btn-overview';
+        tab.classList.toggle('active', isOverview);
+        tab.setAttribute('aria-selected', isOverview ? 'true' : 'false');
+    });
+
+    panels.forEach(panel => {
+        const isOverview = panel.id === 'tab-overview';
+        panel.hidden = !isOverview;
+        panel.classList.toggle('active', isOverview);
+    });
+}
+
+async function switchReportTab(targetId, tabButton) {
+    // Update tab buttons
+    document.querySelectorAll('.modal-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    tabButton.classList.add('active');
+    tabButton.setAttribute('aria-selected', 'true');
+
+    // Update panels
+    document.querySelectorAll('.tab-panel').forEach(p => {
+        p.hidden = p.id !== targetId;
+        p.classList.toggle('active', p.id === targetId);
+    });
+
+    // Load content for the tab if needed
+    const panel = document.getElementById(targetId);
+    if (!panel) return;
+
+    switch (targetId) {
+        case 'tab-records':
+            if (!panel.dataset.loaded) {
+                await loadRecordsTab();
+                panel.dataset.loaded = 'true';
+            }
+            break;
+        case 'tab-policy':
+            if (!panel.dataset.loaded) {
+                renderPolicyTab();
+                panel.dataset.loaded = 'true';
+            }
+            break;
+        case 'tab-raw':
+            if (!panel.dataset.loaded) {
+                await loadRawXmlTab();
+                panel.dataset.loaded = 'true';
+            }
+            break;
+    }
+}
+
+function renderOverviewTab(report) {
+    const panel = document.getElementById('tab-overview');
+    if (!panel) return;
+
+    panel.textContent = '';
+    panel.classList.add('fade-in');
+
+    const details = document.createElement('div');
+    details.className = 'report-details';
+
+    // Report Information Section
+    const infoSection = createDetailSection('Report Information', [
+        ['Organization', report.org_name],
+        ['Domain', report.domain],
+        ['Date Range', formatDateRange(report.date_begin, report.date_end)],
+        ['Report ID', report.report_id],
+        ['Email', report.email || 'N/A']
+    ]);
+    details.appendChild(infoSection);
+
+    // Statistics Section
+    const statsSection = createDetailSection('Statistics', [
+        ['Total Messages', (report.total_messages || 0).toLocaleString()],
+        ['Total Records', (report.record_count || 0).toLocaleString()],
+        ['Received', new Date(report.received_at).toLocaleString()]
+    ]);
+    details.appendChild(statsSection);
+
+    panel.appendChild(details);
+}
+
+function createDetailSection(title, rows) {
+    const section = document.createElement('div');
+    section.className = 'detail-section';
+
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    section.appendChild(heading);
+
+    const table = document.createElement('table');
+    table.className = 'detail-table';
+
+    rows.forEach(([label, value]) => {
+        const tr = document.createElement('tr');
+
+        const tdLabel = document.createElement('td');
+        const strong = document.createElement('strong');
+        strong.textContent = label + ':';
+        tdLabel.appendChild(strong);
+        tr.appendChild(tdLabel);
+
+        const tdValue = document.createElement('td');
+        tdValue.textContent = value;
+        tr.appendChild(tdValue);
+
+        table.appendChild(tr);
+    });
+
+    section.appendChild(table);
+    return section;
+}
+
+async function loadRecordsTab() {
+    const panel = document.getElementById('tab-records');
+    if (!panel || !currentReportId) return;
+
+    panel.textContent = '';
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    loadingDiv.textContent = 'Loading records...';
+    panel.appendChild(loadingDiv);
+
+    try {
+        await loadRecordsForReport(currentReportId, panel);
+    } catch (error) {
+        panel.textContent = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error';
+        errorDiv.textContent = 'Error loading records.';
+        panel.appendChild(errorDiv);
+    }
+}
+
+function renderPolicyTab() {
+    const panel = document.getElementById('tab-policy');
+    if (!panel || !currentReportData) return;
+
+    panel.textContent = '';
+    panel.classList.add('fade-in');
+
+    const report = currentReportData;
+
+    const grid = document.createElement('div');
+    grid.className = 'policy-grid';
+
+    const policyItems = [
+        ['DMARC Policy', report.policy_p || 'none', 'How receivers should handle failing messages'],
+        ['Subdomain Policy', report.policy_sp || 'none', 'Policy for subdomains'],
+        ['Percentage', (report.policy_pct || 100) + '%', 'Percentage of messages to apply policy'],
+        ['DKIM Alignment', report.policy_adkim || 'relaxed', 'DKIM domain alignment mode'],
+        ['SPF Alignment', report.policy_aspf || 'relaxed', 'SPF domain alignment mode']
+    ];
+
+    policyItems.forEach(([label, value, description]) => {
+        const item = document.createElement('div');
+        item.className = 'policy-item';
+
+        const itemLabel = document.createElement('div');
+        itemLabel.className = 'policy-item-label';
+        itemLabel.textContent = label;
+        item.appendChild(itemLabel);
+
+        const itemValue = document.createElement('div');
+        itemValue.className = 'policy-item-value';
+        itemValue.textContent = value;
+        item.appendChild(itemValue);
+
+        grid.appendChild(item);
+    });
+
+    panel.appendChild(grid);
+}
+
+async function loadRawXmlTab() {
+    const panel = document.getElementById('tab-raw');
+    if (!panel || !currentReportId) return;
+
+    panel.textContent = '';
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading';
+    loadingDiv.textContent = 'Loading XML...';
+    panel.appendChild(loadingDiv);
+
+    try {
+        const response = await fetch(`${API_BASE}/reports/${currentReportId}/raw`);
+        if (!response.ok) {
+            throw new Error('Raw XML not available');
+        }
+        const xmlText = await response.text();
+
+        panel.textContent = '';
+
+        const container = document.createElement('div');
+        container.className = 'raw-xml-container';
+
+        const header = document.createElement('div');
+        header.className = 'raw-xml-header';
+
+        const label = document.createElement('span');
+        label.textContent = 'Raw DMARC Report XML';
+        header.appendChild(label);
+
+        const copyXmlBtn = document.createElement('button');
+        copyXmlBtn.className = 'btn-secondary btn-sm';
+        copyXmlBtn.textContent = 'Copy XML';
+        copyXmlBtn.addEventListener('click', () => copyToClipboard(xmlText, 'XML copied!'));
+        header.appendChild(copyXmlBtn);
+
+        container.appendChild(header);
+
+        const content = document.createElement('div');
+        content.className = 'raw-xml-content';
+
+        const pre = document.createElement('pre');
+        pre.textContent = xmlText;
+        content.appendChild(pre);
+
+        container.appendChild(content);
+        panel.appendChild(container);
+
+    } catch (error) {
+        panel.textContent = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'empty-state';
+        errorDiv.textContent = 'Raw XML not available for this report.';
+        panel.appendChild(errorDiv);
+    }
+}
+
+function copyToClipboard(text, successMessage) {
+    navigator.clipboard.writeText(text).then(() => {
+        showNotification(successMessage || 'Copied!', 'success');
+    }).catch(() => {
+        showNotification('Failed to copy', 'error');
+    });
+}
+
+// ==========================================
+// SAVED VIEWS
+// ==========================================
+
+let savedViews = JSON.parse(localStorage.getItem('dmarc-saved-views') || '[]');
+
+function setupSavedViews() {
+    const container = document.querySelector('.filter-bar-actions');
+    if (!container) return;
+
+    // Create saved views dropdown
+    const dropdown = document.createElement('div');
+    dropdown.className = 'saved-views-dropdown';
+
+    const trigger = document.createElement('button');
+    trigger.className = 'saved-views-trigger';
+    trigger.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Saved Views
+    `;
+
+    const menu = document.createElement('div');
+    menu.className = 'saved-views-menu';
+    menu.hidden = true;
+
+    dropdown.appendChild(trigger);
+    dropdown.appendChild(menu);
+    container.insertBefore(dropdown, container.firstChild);
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+        if (!menu.hidden) {
+            renderSavedViewsMenu(menu);
+        }
+    });
+
+    document.addEventListener('click', () => {
+        menu.hidden = true;
+    });
+}
+
+function renderSavedViewsMenu(menu) {
+    menu.textContent = '';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'saved-views-header';
+
+    const headerTitle = document.createElement('span');
+    headerTitle.textContent = 'Saved Views';
+    header.appendChild(headerTitle);
+
+    menu.appendChild(header);
+
+    // Views list
+    const list = document.createElement('div');
+    list.className = 'saved-views-list';
+
+    if (savedViews.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'saved-views-empty';
+        empty.textContent = 'No saved views yet';
+        list.appendChild(empty);
+    } else {
+        savedViews.forEach((view, index) => {
+            const item = document.createElement('div');
+            item.className = 'saved-view-item';
+
+            const name = document.createElement('span');
+            name.className = 'saved-view-item-name';
+            name.textContent = view.name;
+            item.appendChild(name);
+
+            const actions = document.createElement('div');
+            actions.className = 'saved-view-item-actions';
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'saved-view-delete';
+            deleteBtn.innerHTML = `
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            `;
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteSavedView(index);
+                renderSavedViewsMenu(menu);
+            });
+            actions.appendChild(deleteBtn);
+
+            item.appendChild(actions);
+
+            item.addEventListener('click', () => {
+                applySavedView(view);
+                menu.hidden = true;
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    menu.appendChild(list);
+
+    // Save current view input
+    const divider = document.createElement('div');
+    divider.className = 'saved-views-divider';
+    menu.appendChild(divider);
+
+    const saveInput = document.createElement('div');
+    saveInput.className = 'save-view-input';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Save current view...';
+    input.addEventListener('click', (e) => e.stopPropagation());
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn-secondary btn-sm';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (input.value.trim()) {
+            saveCurrentView(input.value.trim());
+            input.value = '';
+            renderSavedViewsMenu(menu);
+        }
+    });
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && input.value.trim()) {
+            saveCurrentView(input.value.trim());
+            input.value = '';
+            renderSavedViewsMenu(menu);
+        }
+    });
+
+    saveInput.appendChild(input);
+    saveInput.appendChild(saveBtn);
+    menu.appendChild(saveInput);
+}
+
+function saveCurrentView(name) {
+    const view = {
+        name: name,
+        filters: { ...currentFilters },
+        savedAt: new Date().toISOString()
+    };
+
+    savedViews.push(view);
+    localStorage.setItem('dmarc-saved-views', JSON.stringify(savedViews));
+    showNotification(`View "${name}" saved`, 'success');
+}
+
+function applySavedView(view) {
+    // Apply filters
+    Object.assign(currentFilters, view.filters);
+
+    // Update UI elements
+    const domainFilter = document.getElementById('domainFilter');
+    if (domainFilter) domainFilter.value = currentFilters.domain || '';
+
+    const dateRangeFilter = document.getElementById('dateRangeFilter');
+    if (dateRangeFilter) {
+        if (currentFilters.startDate && currentFilters.endDate) {
+            dateRangeFilter.value = 'custom';
+        } else {
+            dateRangeFilter.value = currentFilters.days?.toString() || '365';
+        }
+    }
+
+    const sourceIpFilter = document.getElementById('sourceIpFilter');
+    if (sourceIpFilter) sourceIpFilter.value = currentFilters.sourceIp || '';
+
+    const dkimResultFilter = document.getElementById('dkimResultFilter');
+    if (dkimResultFilter) dkimResultFilter.value = currentFilters.dkimResult || '';
+
+    const spfResultFilter = document.getElementById('spfResultFilter');
+    if (spfResultFilter) spfResultFilter.value = currentFilters.spfResult || '';
+
+    const dispositionFilter = document.getElementById('dispositionFilter');
+    if (dispositionFilter) dispositionFilter.value = currentFilters.disposition || '';
+
+    const orgNameFilter = document.getElementById('orgNameFilter');
+    if (orgNameFilter) orgNameFilter.value = currentFilters.orgName || '';
+
+    // Show advanced filters if any are active
+    const hasAdvancedFilters = currentFilters.sourceIp || currentFilters.dkimResult ||
+                               currentFilters.spfResult || currentFilters.disposition ||
+                               currentFilters.orgName;
+
+    const advPanel = document.getElementById('advancedFiltersPanel');
+    if (advPanel && hasAdvancedFilters && advPanel.hidden) {
+        toggleAdvancedFilters();
+    }
+
+    // Apply and reload
+    loadDashboard();
+    updateFilterCount();
+    showNotification(`Applied view: ${view.name}`, 'info');
+}
+
+function deleteSavedView(index) {
+    const view = savedViews[index];
+    savedViews.splice(index, 1);
+    localStorage.setItem('dmarc-saved-views', JSON.stringify(savedViews));
+    showNotification(`Deleted view: ${view.name}`, 'info');
+}
+
+// ==========================================
+// INLINE VALIDATION
+// ==========================================
+
+function setupInlineValidation() {
+    // IP address validation
+    const sourceIpFilter = document.getElementById('sourceIpFilter');
+    if (sourceIpFilter) {
+        wrapInputForValidation(sourceIpFilter, validateIpAddress, 'Enter a valid IP address (e.g., 192.168.1.1)');
+    }
+
+    // IP range validation
+    const sourceIpRangeFilter = document.getElementById('sourceIpRangeFilter');
+    if (sourceIpRangeFilter) {
+        wrapInputForValidation(sourceIpRangeFilter, validateIpRange, 'Enter a valid CIDR range (e.g., 192.168.0.0/24)');
+    }
+}
+
+function wrapInputForValidation(input, validator, errorMessage) {
+    // Don't wrap if already wrapped
+    if (input.parentElement.classList.contains('input-wrapper')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'input-wrapper';
+
+    input.parentNode.insertBefore(wrapper, input);
+    wrapper.appendChild(input);
+
+    // Add validation icons
+    const validIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    validIcon.setAttribute('viewBox', '0 0 24 24');
+    validIcon.setAttribute('fill', 'none');
+    validIcon.setAttribute('stroke', 'currentColor');
+    validIcon.setAttribute('stroke-width', '2');
+    validIcon.classList.add('input-validation-icon', 'valid-icon');
+    validIcon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+    wrapper.appendChild(validIcon);
+
+    const invalidIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    invalidIcon.setAttribute('viewBox', '0 0 24 24');
+    invalidIcon.setAttribute('fill', 'none');
+    invalidIcon.setAttribute('stroke', 'currentColor');
+    invalidIcon.setAttribute('stroke-width', '2');
+    invalidIcon.classList.add('input-validation-icon', 'invalid-icon');
+    invalidIcon.innerHTML = '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>';
+    wrapper.appendChild(invalidIcon);
+
+    // Add error message
+    const errorDiv = document.createElement('span');
+    errorDiv.className = 'input-error';
+    errorDiv.textContent = errorMessage;
+    wrapper.appendChild(errorDiv);
+
+    // Add validation on input
+    input.addEventListener('input', () => {
+        const value = input.value.trim();
+
+        if (value === '') {
+            wrapper.classList.remove('valid', 'invalid');
+        } else if (validator(value)) {
+            wrapper.classList.remove('invalid');
+            wrapper.classList.add('valid');
+        } else {
+            wrapper.classList.remove('valid');
+            wrapper.classList.add('invalid');
+        }
+    });
+
+    input.addEventListener('blur', () => {
+        // Only show invalid state after blur
+        const value = input.value.trim();
+        if (value === '') {
+            wrapper.classList.remove('valid', 'invalid');
+        }
+    });
+}
+
+function validateIpAddress(value) {
+    // IPv4
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (ipv4Regex.test(value)) {
+        const parts = value.split('.').map(Number);
+        return parts.every(part => part >= 0 && part <= 255);
+    }
+
+    // IPv6 (simplified check)
+    const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^([0-9a-fA-F]{1,4}:)*:([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$/;
+    return ipv6Regex.test(value);
+}
+
+function validateIpRange(value) {
+    // CIDR notation
+    const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+    if (cidrRegex.test(value)) {
+        const [ip, prefix] = value.split('/');
+        const prefixNum = parseInt(prefix, 10);
+        if (prefixNum < 0 || prefixNum > 32) return false;
+
+        const parts = ip.split('.').map(Number);
+        return parts.every(part => part >= 0 && part <= 255);
+    }
+
+    return false;
 }
 
 // Escape HTML to prevent XSS
