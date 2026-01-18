@@ -90,9 +90,18 @@ class TestDecompression:
             decompress_file(compressed, "empty.zip")
 
     def test_decompress_invalid_gzip(self):
-        """Test error handling for invalid gzip"""
+        """Test that data without gzip magic bytes is treated as raw XML"""
+        # Parser now uses magic bytes, not extension. Data without gzip magic
+        # (0x1f 0x8b) is treated as raw XML regardless of filename extension.
+        result = decompress_file(b"not gzip data", "report.xml.gz")
+        assert result == b"not gzip data"
+
+    def test_decompress_corrupt_gzip(self):
+        """Test error handling for corrupt gzip data (has magic bytes but invalid)"""
+        # Create data with gzip magic bytes but corrupt content
+        corrupt_gzip = b'\x1f\x8b\x08\x00' + b'corrupt data here'
         with pytest.raises(DmarcParseError, match="Failed to decompress"):
-            decompress_file(b"not gzip data", "report.xml.gz")
+            decompress_file(corrupt_gzip, "report.xml.gz")
 
 
 class TestXMLParsing:
