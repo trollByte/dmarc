@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # Frontend URL (for password reset links, etc.)
     frontend_url: str = "http://localhost:3000"  # Override in production
 
+    # Security
+    cors_origins: list[str] = []  # Allowed CORS origins (comma-separated in env)
+    allowed_hosts: list[str] = []  # Allowed host headers (comma-separated in env)
+    enable_hsts: bool = True  # Enable HTTP Strict Transport Security
+    max_request_size: int = 52428800  # 50MB max request size
+
     # OAuth / SSO
     oauth_enabled: bool = False
     oauth_base_url: str = ""  # e.g., https://your-domain.com (for redirect URIs)
@@ -104,12 +110,12 @@ class Settings(BaseSettings):
     microsoft_client_secret: str = ""
     microsoft_tenant_id: str = "common"  # Use "common" for multi-tenant, or specific tenant ID
 
-    @field_validator('api_keys', mode='before')
+    @field_validator('api_keys', 'cors_origins', 'allowed_hosts', mode='before')
     @classmethod
-    def parse_api_keys(cls, v):
-        """Parse comma-separated API keys from environment variable"""
+    def parse_comma_separated_list(cls, v):
+        """Parse comma-separated values from environment variable"""
         if isinstance(v, str):
-            return [key.strip() for key in v.split(',') if key.strip()]
+            return [item.strip() for item in v.split(',') if item.strip()]
         return v or []
 
     class Config:

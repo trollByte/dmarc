@@ -35,6 +35,7 @@ from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
 from app.error_handlers import register_error_handlers
 from app.middleware.rate_limit import limiter, rate_limit_handler, SlowAPIMiddleware
+from app.middleware.security import SecurityHeadersMiddleware, RequestSizeLimitMiddleware
 from slowapi.errors import RateLimitExceeded
 
 settings = get_settings()
@@ -74,10 +75,25 @@ app = FastAPI(
     redoc_url="/redoc" if settings.debug else None,
 )
 
+# Add security headers middleware (added first, runs last)
+if not settings.debug:
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        enable_hsts=settings.enable_hsts,
+        frame_options="DENY",
+    )
+
+# Add request size limit middleware
+app.add_middleware(
+    RequestSizeLimitMiddleware,
+    max_content_length=settings.max_request_size
+)
+
 # Add CORS middleware
+cors_origins = settings.cors_origins if settings.cors_origins else (["*"] if settings.debug else [])
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.debug else [],  # Configure allowed origins in production
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
