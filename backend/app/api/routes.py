@@ -1829,3 +1829,162 @@ async def get_task_stats(
             "success_rate": 0,
             "message": "Task tracking table not initialized yet (run migration 004)"
         }
+
+
+@router.get("/api/dashboard/trends")
+async def dashboard_trends(
+    domain: Optional[str] = Query(None, description="Filter by domain"),
+    days: int = Query(7, ge=1, le=90, description="Number of days for sparkline data"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get dashboard trend data for sparklines and period-over-period comparisons.
+
+    Returns:
+    - Daily values for the specified period (for sparklines)
+    - Current period vs previous period comparison
+    - Percentage changes
+    """
+    from datetime import timedelta
+    from sqlalchemy import cast, Date
+    from app.services.cache import get_cache, cache_key
+
+    cache = get_cache()
+    cache_k = cache_key("dashboard_trends", domain=domain, days=days)
+    cached = cache.get(cache_k)
+    if cached:
+        return cached
+
+    end_date = datetime.utcnow()
+    current_start = end_date - timedelta(days=days)
+    previous_start = current_start - timedelta(days=days)
+
+    # Helper function for period stats
+    def get_period_stats(start: datetime, end: datetime):
+        query = db.query(
+            func.count(func.distinct(DmarcReport.id)).label('reports'),
+            func.sum(DmarcRecord.count).label('messages'),
+            func.count(func.distinct(DmarcRecord.source_ip)).label('sources'),
+            func.sum(
+                case(
+                    (and_(DmarcRecord.dkim_result == 'pass', DmarcRecord.spf_result == 'pass'),
+                     DmarcRecord.count),
+                    else_=0
+                )
+            ).label('passed'),
+            func.sum(
+                case(
+                    (and_(DmarcRecord.dkim_result != 'pass', DmarcRecord.spf_result != 'pass'),
+                     DmarcRecord.count),
+                    else_=0
+                )
+            ).label('failed')
+        ).join(
+            DmarcRecord, DmarcReport.id == DmarcRecord.report_id
+        ).filter(
+            DmarcReport.date_end >= start,
+            DmarcReport.date_end < end
+        )
+
+        if domain:
+            query = query.filter(DmarcReport.domain == domain)
+
+        return query.first()
+
+    # Get current and previous period stats
+    current = get_period_stats(current_start, end_date)
+    previous = get_period_stats(previous_start, current_start)
+
+    # Calculate percentage changes
+    def calc_change(current_val, previous_val):
+        c = current_val or 0
+        p = previous_val or 0
+        if p == 0:
+            return 100 if c > 0 else 0
+        return round(((c - p) / p) * 100, 1)
+
+    # Get daily data for sparklines
+    daily_query = db.query(
+        cast(DmarcReport.date_end, Date).label('date'),
+        func.count(func.distinct(DmarcReport.id)).label('reports'),
+        func.sum(DmarcRecord.count).label('messages'),
+        func.count(func.distinct(DmarcRecord.source_ip)).label('sources'),
+        func.sum(
+            case(
+                (and_(DmarcRecord.dkim_result == 'pass', DmarcRecord.spf_result == 'pass'),
+                 DmarcRecord.count),
+                else_=0
+            )
+        ).label('passed')
+    ).join(
+        DmarcRecord, DmarcReport.id == DmarcRecord.report_id
+    ).filter(
+        DmarcReport.date_end >= current_start,
+        DmarcReport.date_end <= end_date
+    )
+
+    if domain:
+        daily_query = daily_query.filter(DmarcReport.domain == domain)
+
+    daily_query = daily_query.group_by(cast(DmarcReport.date_end, Date))
+    daily_query = daily_query.order_by(cast(DmarcReport.date_end, Date))
+    daily_results = daily_query.all()
+
+    # Build sparkline data arrays
+    sparklines = {
+        "reports": [],
+        "messages": [],
+        "sources": [],
+        "passRate": []
+    }
+
+    for row in daily_results:
+        sparklines["reports"].append(row.reports or 0)
+        sparklines["messages"].append(row.messages or 0)
+        sparklines["sources"].append(row.sources or 0)
+
+        total = row.messages or 0
+        passed = row.passed or 0
+        pass_rate = round((passed / total * 100), 1) if total > 0 else 0
+        sparklines["passRate"].append(pass_rate)
+
+    # Calculate current period pass rate
+    current_total = current.messages or 0
+    current_passed = current.passed or 0
+    current_pass_rate = round((current_passed / current_total * 100), 1) if current_total > 0 else 0
+
+    previous_total = previous.messages or 0
+    previous_passed = previous.passed or 0
+    previous_pass_rate = round((previous_passed / previous_total * 100), 1) if previous_total > 0 else 0
+
+    result = {
+        "period_days": days,
+        "current_period": {
+            "reports": current.reports or 0,
+            "messages": current.messages or 0,
+            "sources": current.sources or 0,
+            "passed": current.passed or 0,
+            "failed": current.failed or 0,
+            "pass_rate": current_pass_rate
+        },
+        "previous_period": {
+            "reports": previous.reports or 0,
+            "messages": previous.messages or 0,
+            "sources": previous.sources or 0,
+            "passed": previous.passed or 0,
+            "failed": previous.failed or 0,
+            "pass_rate": previous_pass_rate
+        },
+        "changes": {
+            "reports": calc_change(current.reports, previous.reports),
+            "messages": calc_change(current.messages, previous.messages),
+            "sources": calc_change(current.sources, previous.sources),
+            "pass_rate": round(current_pass_rate - previous_pass_rate, 1)
+        },
+        "sparklines": sparklines,
+        "labels": [row.date.strftime('%Y-%m-%d') for row in daily_results]
+    }
+
+    # Cache for 5 minutes
+    cache.set(cache_k, result, ttl=300)
+    return result

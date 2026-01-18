@@ -21,6 +21,8 @@ resources:
   - celery.yaml
   - frontend.yaml
   - ingress.yaml
+  - pdb.yaml
+  - network-policies.yaml
 
 # Image configuration - override in overlays
 images:

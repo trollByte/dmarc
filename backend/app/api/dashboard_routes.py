@@ -383,3 +383,188 @@ def _score_to_status(score: float) -> str:
         return "poor"
     else:
         return "critical"
+
+
+@router.get("/auth-analysis", summary="Get DKIM/SPF authentication analysis")
+async def get_auth_analysis(
+    domain: str = Query(None, description="Filter by domain"),
+    days: int = Query(default=30, ge=7, le=90, description="Days of data"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Get detailed DKIM/SPF authentication analysis.
+
+    Returns:
+    - Overall authentication statistics
+    - DKIM results by selector and domain
+    - SPF results by scope and domain
+    - Failure patterns and recommendations
+    - Top failing sources with details
+    """
+    from sqlalchemy import case, and_, or_, distinct
+
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+
+    # Base query filter
+    base_filter = [Report.date_range_begin >= cutoff_date]
+    if domain:
+        base_filter.append(Report.domain == domain)
+
+    # Overall authentication stats
+    overall = db.query(
+        func.sum(Record.count).label("total"),
+        func.sum(case((Record.dkim_result == "pass", Record.count), else_=0)).label("dkim_pass"),
+        func.sum(case((Record.dkim_result == "fail", Record.count), else_=0)).label("dkim_fail"),
+        func.sum(case((Record.dkim_result.in_(["none", "neutral", "temperror", "permerror"]), Record.count), else_=0)).label("dkim_other"),
+        func.sum(case((Record.spf_result == "pass", Record.count), else_=0)).label("spf_pass"),
+        func.sum(case((Record.spf_result == "fail", Record.count), else_=0)).label("spf_fail"),
+        func.sum(case((Record.spf_result.in_(["none", "neutral", "softfail", "temperror", "permerror"]), Record.count), else_=0)).label("spf_other"),
+        func.sum(case((and_(Record.dkim_result == "pass", Record.spf_result == "pass"), Record.count), else_=0)).label("both_pass"),
+        func.sum(case((and_(Record.dkim_result != "pass", Record.spf_result != "pass"), Record.count), else_=0)).label("both_fail"),
+    ).join(Report).filter(*base_filter).first()
+
+    total = overall.total or 0
+
+    # DKIM by selector
+    dkim_selectors = db.query(
+        Record.dkim_selector,
+        Record.dkim_domain,
+        func.sum(Record.count).label("total"),
+        func.sum(case((Record.dkim_result == "pass", Record.count), else_=0)).label("pass_count"),
+        func.sum(case((Record.dkim_result == "fail", Record.count), else_=0)).label("fail_count"),
+    ).join(Report).filter(
+        *base_filter,
+        Record.dkim_selector.isnot(None)
+    ).group_by(
+        Record.dkim_selector,
+        Record.dkim_domain
+    ).order_by(
+        func.sum(Record.count).desc()
+    ).limit(20).all()
+
+    selectors = []
+    for row in dkim_selectors:
+        row_total = row.total or 0
+        selectors.append({
+            "selector": row.dkim_selector,
+            "domain": row.dkim_domain,
+            "total": row_total,
+            "pass_count": row.pass_count or 0,
+            "fail_count": row.fail_count or 0,
+            "pass_rate": round((row.pass_count or 0) / row_total * 100, 1) if row_total > 0 else 0
+        })
+
+    # SPF by domain
+    spf_domains = db.query(
+        Record.spf_domain,
+        func.sum(Record.count).label("total"),
+        func.sum(case((Record.spf_result == "pass", Record.count), else_=0)).label("pass_count"),
+        func.sum(case((Record.spf_result == "fail", Record.count), else_=0)).label("fail_count"),
+        func.sum(case((Record.spf_result == "softfail", Record.count), else_=0)).label("softfail_count"),
+    ).join(Report).filter(
+        *base_filter,
+        Record.spf_domain.isnot(None)
+    ).group_by(
+        Record.spf_domain
+    ).order_by(
+        func.sum(Record.count).desc()
+    ).limit(20).all()
+
+    spf_data = []
+    for row in spf_domains:
+        row_total = row.total or 0
+        spf_data.append({
+            "domain": row.spf_domain,
+            "total": row_total,
+            "pass_count": row.pass_count or 0,
+            "fail_count": row.fail_count or 0,
+            "softfail_count": row.softfail_count or 0,
+            "pass_rate": round((row.pass_count or 0) / row_total * 100, 1) if row_total > 0 else 0
+        })
+
+    # Top failing sources
+    failing_sources = db.query(
+        Record.source_ip,
+        Record.header_from,
+        func.sum(Record.count).label("total"),
+        func.sum(case((Record.dkim_result != "pass", Record.count), else_=0)).label("dkim_failures"),
+        func.sum(case((Record.spf_result != "pass", Record.count), else_=0)).label("spf_failures"),
+    ).join(Report).filter(
+        *base_filter,
+        or_(Record.dkim_result != "pass", Record.spf_result != "pass")
+    ).group_by(
+        Record.source_ip,
+        Record.header_from
+    ).order_by(
+        func.sum(Record.count).desc()
+    ).limit(15).all()
+
+    failures = []
+    for row in failing_sources:
+        failures.append({
+            "source_ip": row.source_ip,
+            "header_from": row.header_from,
+            "total_failures": row.total or 0,
+            "dkim_failures": row.dkim_failures or 0,
+            "spf_failures": row.spf_failures or 0
+        })
+
+    # Generate recommendations
+    recommendations = []
+
+    dkim_pass_rate = (overall.dkim_pass or 0) / total * 100 if total > 0 else 0
+    spf_pass_rate = (overall.spf_pass or 0) / total * 100 if total > 0 else 0
+
+    if dkim_pass_rate < 95:
+        recommendations.append({
+            "type": "dkim",
+            "severity": "warning" if dkim_pass_rate >= 80 else "critical",
+            "title": "DKIM Authentication Issues",
+            "message": f"DKIM pass rate is {dkim_pass_rate:.1f}%. Review DKIM selectors and ensure all legitimate sending services have valid DKIM signatures.",
+            "action": "Review DKIM configuration for failing selectors"
+        })
+
+    if spf_pass_rate < 95:
+        recommendations.append({
+            "type": "spf",
+            "severity": "warning" if spf_pass_rate >= 80 else "critical",
+            "title": "SPF Authentication Issues",
+            "message": f"SPF pass rate is {spf_pass_rate:.1f}%. Ensure all legitimate sending IPs are included in your SPF record.",
+            "action": "Update SPF record to include missing authorized senders"
+        })
+
+    if len(failures) > 10:
+        recommendations.append({
+            "type": "sources",
+            "severity": "info",
+            "title": "Multiple Failing Sources",
+            "message": f"Found {len(failures)} sources with authentication failures. Some may be unauthorized senders.",
+            "action": "Review failing sources and block unauthorized senders"
+        })
+
+    return {
+        "period_days": days,
+        "domain": domain,
+        "summary": {
+            "total_messages": total,
+            "dkim": {
+                "pass": overall.dkim_pass or 0,
+                "fail": overall.dkim_fail or 0,
+                "other": overall.dkim_other or 0,
+                "pass_rate": round(dkim_pass_rate, 1)
+            },
+            "spf": {
+                "pass": overall.spf_pass or 0,
+                "fail": overall.spf_fail or 0,
+                "other": overall.spf_other or 0,
+                "pass_rate": round(spf_pass_rate, 1)
+            },
+            "both_pass": overall.both_pass or 0,
+            "both_fail": overall.both_fail or 0
+        },
+        "dkim_selectors": selectors,
+        "spf_domains": spf_data,
+        "failing_sources": failures,
+        "recommendations": recommendations
+    }

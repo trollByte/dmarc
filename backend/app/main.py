@@ -28,6 +28,8 @@ from app.api.tls_rpt_routes import router as tls_rpt_router
 from app.api.bimi_routes import router as bimi_router
 from app.api.scheduled_reports_routes import router as scheduled_reports_router
 from app.api.saml_routes import router as saml_router
+from app.api.notification_routes import router as notification_router
+from app.api.saved_view_routes import router as saved_view_router
 from app.metrics import metrics_router, metrics_middleware
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
@@ -116,6 +118,8 @@ app.include_router(tls_rpt_router)
 app.include_router(bimi_router)
 app.include_router(scheduled_reports_router)
 app.include_router(saml_router)
+app.include_router(notification_router)
+app.include_router(saved_view_router)
 app.include_router(metrics_router)
 
 # Add metrics collection middleware
