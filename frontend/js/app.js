@@ -54,6 +54,14 @@ const featureTooltipsQueue = [
     { target: '#toggleSecondaryCharts', text: 'Click to reveal additional analytics charts', position: 'top' }
 ];
 
+// Comparison/trend data cache
+let trendDataCache = {
+    passRate: [],
+    failRate: [],
+    messageVolume: [],
+    lastUpdated: null
+};
+
 // Keyboard shortcuts configuration
 const keyboardShortcuts = [
     { key: '?', description: 'Show keyboard shortcuts', action: 'showKeyboardShortcuts' },
@@ -1152,6 +1160,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up inline validation
     setupInlineValidation();
 
+    // Set up notification center
+    setupNotificationCenter();
+
+    // Set up dashboard customization
+    setupDashboardCustomization();
+
+    // Set up export builder
+    setupExportBuilder();
+
     // Set up visibility handler for smart refresh
     setupVisibilityHandler();
 
@@ -1163,6 +1180,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Load dashboard with skeleton states
     await loadDashboard();
+
+    // Load comparison data and render sparklines
+    await loadComparisonData();
+    renderStatCardSparklines();
 
     // Start smart auto-refresh (checks for new data without auto-reloading)
     startSmartRefresh();
@@ -2872,6 +2893,924 @@ function validateIpRange(value) {
     }
 
     return false;
+}
+
+// ==========================================
+// SPARKLINES & COMPARISON VIEWS
+// ==========================================
+
+function createSparkline(data, container, options = {}) {
+    const {
+        width = 80,
+        height = 24,
+        strokeColor = 'var(--accent-primary)',
+        fillColor = 'var(--accent-primary)',
+        showArea = true
+    } = options;
+
+    if (!data || data.length < 2) {
+        container.textContent = '—';
+        return;
+    }
+
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+
+    // Calculate points
+    const points = data.map((value, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((value - min) / range) * (height - 4) - 2;
+        return { x, y };
+    });
+
+    // Create SVG
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('class', 'sparkline-svg');
+    svg.setAttribute('aria-hidden', 'true');
+
+    // Determine trend
+    const trend = data[data.length - 1] > data[0] ? 'up' : data[data.length - 1] < data[0] ? 'down' : 'flat';
+
+    // Create path
+    const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+    if (showArea) {
+        const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const areaData = `${pathData} L ${width} ${height} L 0 ${height} Z`;
+        areaPath.setAttribute('d', areaData);
+        areaPath.setAttribute('class', 'sparkline-area');
+        areaPath.style.fill = fillColor;
+        areaPath.style.opacity = '0.1';
+        svg.appendChild(areaPath);
+    }
+
+    const linePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    linePath.setAttribute('d', pathData);
+    linePath.setAttribute('class', 'sparkline-line');
+    linePath.style.stroke = strokeColor;
+    svg.appendChild(linePath);
+
+    // Add endpoint dot
+    const endDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    endDot.setAttribute('cx', points[points.length - 1].x);
+    endDot.setAttribute('cy', points[points.length - 1].y);
+    endDot.setAttribute('r', '2');
+    endDot.style.fill = strokeColor;
+    svg.appendChild(endDot);
+
+    container.textContent = '';
+    container.appendChild(svg);
+    container.classList.add('sparkline');
+    container.classList.remove('trend-up', 'trend-down');
+    if (trend === 'up') container.classList.add('trend-up');
+    if (trend === 'down') container.classList.add('trend-down');
+
+    return { trend, change: data[data.length - 1] - data[0] };
+}
+
+async function loadComparisonData() {
+    try {
+        // Get timeline data for the current period
+        const queryString = buildQueryString();
+        const response = await fetch(`${API_BASE}/rollup/timeline?${queryString}`);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+
+        if (!data || data.length < 2) return null;
+
+        // Extract trend data
+        trendDataCache.passRate = data.map(d => {
+            const total = (d.pass_count || 0) + (d.fail_count || 0);
+            return total > 0 ? (d.pass_count / total) * 100 : 0;
+        });
+
+        trendDataCache.failRate = data.map(d => {
+            const total = (d.pass_count || 0) + (d.fail_count || 0);
+            return total > 0 ? (d.fail_count / total) * 100 : 0;
+        });
+
+        trendDataCache.messageVolume = data.map(d => (d.pass_count || 0) + (d.fail_count || 0));
+
+        trendDataCache.lastUpdated = new Date();
+
+        return trendDataCache;
+    } catch (error) {
+        console.error('Error loading comparison data:', error);
+        return null;
+    }
+}
+
+function renderStatCardSparklines() {
+    if (!trendDataCache.passRate.length) return;
+
+    // Pass rate sparkline
+    const passRateCard = document.querySelector('#passRate')?.closest('.stat-card');
+    if (passRateCard) {
+        let sparklineContainer = passRateCard.querySelector('.stat-sparkline');
+        if (!sparklineContainer) {
+            sparklineContainer = document.createElement('div');
+            sparklineContainer.className = 'stat-sparkline';
+            passRateCard.appendChild(sparklineContainer);
+        }
+        createSparkline(trendDataCache.passRate, sparklineContainer, {
+            strokeColor: 'var(--accent-success)',
+            fillColor: 'var(--accent-success)'
+        });
+    }
+
+    // Fail rate sparkline
+    const failRateCard = document.querySelector('#failRate')?.closest('.stat-card');
+    if (failRateCard) {
+        let sparklineContainer = failRateCard.querySelector('.stat-sparkline');
+        if (!sparklineContainer) {
+            sparklineContainer = document.createElement('div');
+            sparklineContainer.className = 'stat-sparkline';
+            failRateCard.appendChild(sparklineContainer);
+        }
+        createSparkline(trendDataCache.failRate, sparklineContainer, {
+            strokeColor: 'var(--accent-danger)',
+            fillColor: 'var(--accent-danger)'
+        });
+    }
+
+    // Message volume sparkline
+    const messagesCard = document.querySelector('#totalMessages')?.closest('.stat-card');
+    if (messagesCard) {
+        let sparklineContainer = messagesCard.querySelector('.stat-sparkline');
+        if (!sparklineContainer) {
+            sparklineContainer = document.createElement('div');
+            sparklineContainer.className = 'stat-sparkline';
+            messagesCard.appendChild(sparklineContainer);
+        }
+        createSparkline(trendDataCache.messageVolume, sparklineContainer, {
+            strokeColor: 'var(--accent-primary)',
+            fillColor: 'var(--accent-primary)'
+        });
+    }
+}
+
+function calculatePeriodComparison(currentData, previousData) {
+    if (!currentData || !previousData) return null;
+
+    const currentTotal = currentData.reduce((sum, val) => sum + val, 0);
+    const previousTotal = previousData.reduce((sum, val) => sum + val, 0);
+
+    if (previousTotal === 0) return null;
+
+    const percentChange = ((currentTotal - previousTotal) / previousTotal) * 100;
+
+    return {
+        current: currentTotal,
+        previous: previousTotal,
+        change: currentTotal - previousTotal,
+        percentChange: percentChange,
+        direction: percentChange > 0 ? 'up' : percentChange < 0 ? 'down' : 'flat'
+    };
+}
+
+function renderComparisonIndicator(container, comparison, metric) {
+    if (!comparison) {
+        container.textContent = '';
+        return;
+    }
+
+    container.textContent = '';
+    container.className = 'comparison-indicator';
+
+    const arrow = document.createElement('span');
+    arrow.className = 'comparison-arrow';
+
+    const value = document.createElement('span');
+    value.className = 'comparison-value';
+
+    if (comparison.direction === 'up') {
+        arrow.textContent = '↑';
+        container.classList.add('comparison-up');
+        // For fail rate, up is bad; for pass rate, up is good
+        if (metric === 'failRate') {
+            container.classList.add('comparison-negative');
+        } else {
+            container.classList.add('comparison-positive');
+        }
+    } else if (comparison.direction === 'down') {
+        arrow.textContent = '↓';
+        container.classList.add('comparison-down');
+        if (metric === 'failRate') {
+            container.classList.add('comparison-positive');
+        } else {
+            container.classList.add('comparison-negative');
+        }
+    } else {
+        arrow.textContent = '→';
+        container.classList.add('comparison-flat');
+    }
+
+    value.textContent = `${Math.abs(comparison.percentChange).toFixed(1)}%`;
+
+    container.appendChild(arrow);
+    container.appendChild(value);
+}
+
+// ==========================================
+// NOTIFICATION CENTER
+// ==========================================
+
+let notifications = JSON.parse(localStorage.getItem('dmarc-notifications') || '[]');
+let unreadCount = notifications.filter(n => !n.read).length;
+
+function setupNotificationCenter() {
+    const headerActions = document.querySelector('.action-group-secondary');
+    if (!headerActions) return;
+
+    // Create notification center button
+    const notifCenter = document.createElement('div');
+    notifCenter.className = 'notification-center';
+
+    const trigger = document.createElement('button');
+    trigger.className = 'btn-icon notification-trigger';
+    trigger.setAttribute('aria-label', 'Notifications');
+    trigger.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span class="notification-badge" id="notificationBadge">${unreadCount || ''}</span>
+    `;
+
+    const panel = document.createElement('div');
+    panel.className = 'notification-panel';
+    panel.id = 'notificationPanel';
+    panel.hidden = true;
+
+    notifCenter.appendChild(trigger);
+    notifCenter.appendChild(panel);
+
+    // Insert before theme toggle
+    const themeToggle = headerActions.querySelector('#themeToggle');
+    if (themeToggle) {
+        headerActions.insertBefore(notifCenter, themeToggle);
+    } else {
+        headerActions.appendChild(notifCenter);
+    }
+
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) {
+            renderNotificationPanel();
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!notifCenter.contains(e.target)) {
+            panel.hidden = true;
+        }
+    });
+
+    // Add some initial notifications if empty
+    if (notifications.length === 0) {
+        addNotification({
+            type: 'info',
+            title: 'Welcome to DMARC Dashboard',
+            message: 'Start by importing your DMARC reports to see analytics.',
+            time: new Date().toISOString()
+        });
+    }
+}
+
+function renderNotificationPanel() {
+    const panel = document.getElementById('notificationPanel');
+    if (!panel) return;
+
+    panel.textContent = '';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'notification-panel-header';
+
+    const title = document.createElement('h3');
+    title.textContent = 'Notifications';
+    header.appendChild(title);
+
+    if (notifications.some(n => !n.read)) {
+        const markReadBtn = document.createElement('button');
+        markReadBtn.className = 'notification-mark-read';
+        markReadBtn.textContent = 'Mark all read';
+        markReadBtn.addEventListener('click', markAllNotificationsRead);
+        header.appendChild(markReadBtn);
+    }
+
+    panel.appendChild(header);
+
+    // List
+    const list = document.createElement('div');
+    list.className = 'notification-list';
+
+    if (notifications.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'notification-empty';
+        empty.innerHTML = `
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <p>No notifications</p>
+        `;
+        list.appendChild(empty);
+    } else {
+        // Show most recent first, limit to 10
+        const recentNotifs = [...notifications].reverse().slice(0, 10);
+
+        recentNotifs.forEach((notif, index) => {
+            const item = document.createElement('div');
+            item.className = 'notification-item';
+            if (!notif.read) item.classList.add('unread');
+
+            // Icon
+            const iconDiv = document.createElement('div');
+            iconDiv.className = `notification-item-icon ${notif.type}`;
+
+            const iconPaths = {
+                info: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+                success: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
+                warning: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
+                error: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z'
+            };
+
+            iconDiv.innerHTML = `
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="${iconPaths[notif.type] || iconPaths.info}" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            `;
+            item.appendChild(iconDiv);
+
+            // Content
+            const content = document.createElement('div');
+            content.className = 'notification-item-content';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'notification-item-title';
+            titleEl.textContent = notif.title;
+            content.appendChild(titleEl);
+
+            const message = document.createElement('div');
+            message.className = 'notification-item-message';
+            message.textContent = notif.message;
+            content.appendChild(message);
+
+            const time = document.createElement('div');
+            time.className = 'notification-item-time';
+            time.textContent = formatRelativeTime(new Date(notif.time));
+            content.appendChild(time);
+
+            item.appendChild(content);
+
+            item.addEventListener('click', () => {
+                markNotificationRead(notifications.length - 1 - index);
+                renderNotificationPanel();
+            });
+
+            list.appendChild(item);
+        });
+    }
+
+    panel.appendChild(list);
+}
+
+function addNotification(notif) {
+    notifications.push({
+        ...notif,
+        id: Date.now(),
+        read: false,
+        time: notif.time || new Date().toISOString()
+    });
+
+    // Keep only last 50 notifications
+    if (notifications.length > 50) {
+        notifications = notifications.slice(-50);
+    }
+
+    localStorage.setItem('dmarc-notifications', JSON.stringify(notifications));
+    updateNotificationBadge();
+}
+
+function markNotificationRead(index) {
+    if (notifications[index]) {
+        notifications[index].read = true;
+        localStorage.setItem('dmarc-notifications', JSON.stringify(notifications));
+        updateNotificationBadge();
+    }
+}
+
+function markAllNotificationsRead() {
+    notifications.forEach(n => n.read = true);
+    localStorage.setItem('dmarc-notifications', JSON.stringify(notifications));
+    updateNotificationBadge();
+    renderNotificationPanel();
+}
+
+function updateNotificationBadge() {
+    unreadCount = notifications.filter(n => !n.read).length;
+    const badge = document.getElementById('notificationBadge');
+    if (badge) {
+        badge.textContent = unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : '';
+        badge.dataset.count = unreadCount;
+    }
+}
+
+function formatRelativeTime(date) {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+}
+
+// ==========================================
+// DASHBOARD CUSTOMIZATION
+// ==========================================
+
+let dashboardLayout = JSON.parse(localStorage.getItem('dmarc-dashboard-layout') || 'null');
+let pinnedWidgets = JSON.parse(localStorage.getItem('dmarc-pinned-widgets') || '[]');
+
+const defaultWidgets = [
+    { id: 'stats', name: 'Statistics Cards', section: 'stats', pinned: true },
+    { id: 'timeline', name: 'Timeline Chart', section: 'charts-primary', pinned: true },
+    { id: 'domain', name: 'Domain Distribution', section: 'charts-primary', pinned: true },
+    { id: 'sourceIp', name: 'Top Source IPs', section: 'charts-primary', pinned: true },
+    { id: 'disposition', name: 'Disposition', section: 'charts-primary', pinned: true },
+    { id: 'alignment', name: 'Alignment Status', section: 'charts-secondary', pinned: false },
+    { id: 'compliance', name: 'Compliance Trend', section: 'charts-secondary', pinned: false },
+    { id: 'failureTrend', name: 'Failure Trend', section: 'charts-secondary', pinned: false },
+    { id: 'topOrgs', name: 'Top Organizations', section: 'charts-secondary', pinned: false },
+    { id: 'reportsTable', name: 'Reports Table', section: 'table', pinned: true }
+];
+
+function setupDashboardCustomization() {
+    // Add customize button to header
+    const headerActions = document.querySelector('.action-group-secondary');
+    if (!headerActions) return;
+
+    const customizeBtn = document.createElement('button');
+    customizeBtn.className = 'btn-icon';
+    customizeBtn.id = 'customizeDashboardBtn';
+    customizeBtn.setAttribute('aria-label', 'Customize dashboard');
+    customizeBtn.title = 'Customize dashboard';
+    customizeBtn.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+    `;
+
+    customizeBtn.addEventListener('click', openCustomizeModal);
+
+    // Insert before notification center if it exists
+    const notifCenter = headerActions.querySelector('.notification-center');
+    if (notifCenter) {
+        headerActions.insertBefore(customizeBtn, notifCenter);
+    } else {
+        const themeToggle = headerActions.querySelector('#themeToggle');
+        if (themeToggle) {
+            headerActions.insertBefore(customizeBtn, themeToggle);
+        } else {
+            headerActions.appendChild(customizeBtn);
+        }
+    }
+
+    // Load saved widget visibility
+    applyWidgetVisibility();
+}
+
+function openCustomizeModal() {
+    let modal = document.getElementById('customizeModal');
+
+    if (!modal) {
+        modal = createCustomizeModal();
+        document.body.appendChild(modal);
+    }
+
+    renderCustomizeModalContent();
+    openModal(modal);
+}
+
+function createCustomizeModal() {
+    const modal = document.createElement('div');
+    modal.id = 'customizeModal';
+    modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'customizeModalTitle');
+    modal.hidden = true;
+
+    modal.innerHTML = `
+        <div class="modal-content modal-customize">
+            <div class="modal-header">
+                <h2 id="customizeModalTitle">Customize Dashboard</h2>
+                <button class="modal-close" aria-label="Close modal">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body customize-body" id="customizeModalBody">
+                <!-- Content will be rendered dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" id="resetLayoutBtn">Reset to Default</button>
+                <button class="btn-primary" id="saveLayoutBtn">Save Changes</button>
+            </div>
+        </div>
+    `;
+
+    // Event listeners
+    modal.querySelector('.modal-close').addEventListener('click', () => closeModal(modal));
+    modal.querySelector('#resetLayoutBtn').addEventListener('click', resetDashboardLayout);
+    modal.querySelector('#saveLayoutBtn').addEventListener('click', () => {
+        saveDashboardLayout();
+        closeModal(modal);
+    });
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal(modal);
+    });
+
+    return modal;
+}
+
+function renderCustomizeModalContent() {
+    const body = document.getElementById('customizeModalBody');
+    if (!body) return;
+
+    body.textContent = '';
+
+    const intro = document.createElement('p');
+    intro.className = 'customize-intro';
+    intro.textContent = 'Toggle widgets on or off. Drag to reorder (coming soon).';
+    body.appendChild(intro);
+
+    // Group widgets by section
+    const sections = {
+        'stats': 'Statistics',
+        'charts-primary': 'Primary Charts',
+        'charts-secondary': 'Secondary Charts',
+        'table': 'Data Table'
+    };
+
+    Object.entries(sections).forEach(([sectionId, sectionName]) => {
+        const widgets = defaultWidgets.filter(w => w.section === sectionId);
+        if (widgets.length === 0) return;
+
+        const section = document.createElement('div');
+        section.className = 'customize-section';
+
+        const sectionTitle = document.createElement('h3');
+        sectionTitle.textContent = sectionName;
+        section.appendChild(sectionTitle);
+
+        const widgetList = document.createElement('div');
+        widgetList.className = 'customize-widget-list';
+
+        widgets.forEach(widget => {
+            const isPinned = pinnedWidgets.includes(widget.id) || widget.pinned;
+
+            const item = document.createElement('div');
+            item.className = 'customize-widget-item';
+            item.dataset.widgetId = widget.id;
+
+            const dragHandle = document.createElement('span');
+            dragHandle.className = 'widget-drag-handle';
+            dragHandle.innerHTML = `
+                <svg class="icon" viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px">
+                    <circle cx="9" cy="6" r="1.5"/>
+                    <circle cx="15" cy="6" r="1.5"/>
+                    <circle cx="9" cy="12" r="1.5"/>
+                    <circle cx="15" cy="12" r="1.5"/>
+                    <circle cx="9" cy="18" r="1.5"/>
+                    <circle cx="15" cy="18" r="1.5"/>
+                </svg>
+            `;
+            item.appendChild(dragHandle);
+
+            const label = document.createElement('label');
+            label.className = 'widget-toggle-label';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = isPinned;
+            checkbox.dataset.widgetId = widget.id;
+            checkbox.addEventListener('change', (e) => {
+                toggleWidgetPinned(widget.id, e.target.checked);
+            });
+
+            const toggle = document.createElement('span');
+            toggle.className = 'widget-toggle';
+
+            const name = document.createElement('span');
+            name.className = 'widget-name';
+            name.textContent = widget.name;
+
+            label.appendChild(checkbox);
+            label.appendChild(toggle);
+            label.appendChild(name);
+            item.appendChild(label);
+
+            widgetList.appendChild(item);
+        });
+
+        section.appendChild(widgetList);
+        body.appendChild(section);
+    });
+}
+
+function toggleWidgetPinned(widgetId, isPinned) {
+    if (isPinned) {
+        if (!pinnedWidgets.includes(widgetId)) {
+            pinnedWidgets.push(widgetId);
+        }
+    } else {
+        pinnedWidgets = pinnedWidgets.filter(id => id !== widgetId);
+    }
+}
+
+function saveDashboardLayout() {
+    localStorage.setItem('dmarc-pinned-widgets', JSON.stringify(pinnedWidgets));
+    applyWidgetVisibility();
+    showNotification('Dashboard layout saved', 'success');
+}
+
+function resetDashboardLayout() {
+    pinnedWidgets = defaultWidgets.filter(w => w.pinned).map(w => w.id);
+    localStorage.setItem('dmarc-pinned-widgets', JSON.stringify(pinnedWidgets));
+    renderCustomizeModalContent();
+    applyWidgetVisibility();
+    showNotification('Dashboard reset to default', 'info');
+}
+
+function applyWidgetVisibility() {
+    // This would hide/show widgets based on pinnedWidgets
+    // For now, we'll just toggle secondary charts visibility
+    const secondaryCharts = document.querySelector('.charts-section-secondary');
+    if (secondaryCharts) {
+        const hasSecondaryPinned = pinnedWidgets.some(id =>
+            ['alignment', 'compliance', 'failureTrend', 'topOrgs'].includes(id)
+        );
+        // Don't hide the section, just mark visibility preference
+    }
+}
+
+// ==========================================
+// EXPORT REPORT BUILDER
+// ==========================================
+
+function setupExportBuilder() {
+    // Add export builder option to export menu
+    const exportMenu = document.getElementById('exportMenu');
+    if (!exportMenu) return;
+
+    // Add divider and builder option
+    const divider = document.createElement('div');
+    divider.className = 'dropdown-divider';
+
+    const builderItem = document.createElement('button');
+    builderItem.className = 'dropdown-item';
+    builderItem.id = 'exportBuilderBtn';
+    builderItem.innerHTML = `
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="12" y1="18" x2="12" y2="12"></line>
+            <line x1="9" y1="15" x2="15" y2="15"></line>
+        </svg>
+        Custom Report Builder
+    `;
+    builderItem.addEventListener('click', openExportBuilder);
+
+    exportMenu.appendChild(divider);
+    exportMenu.appendChild(builderItem);
+}
+
+function openExportBuilder() {
+    let modal = document.getElementById('exportBuilderModal');
+
+    if (!modal) {
+        modal = createExportBuilderModal();
+        document.body.appendChild(modal);
+    }
+
+    openModal(modal);
+    closeAllDropdowns();
+}
+
+function createExportBuilderModal() {
+    const modal = document.createElement('div');
+    modal.id = 'exportBuilderModal';
+    modal.className = 'modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'exportBuilderTitle');
+    modal.hidden = true;
+
+    modal.innerHTML = `
+        <div class="modal-content modal-large modal-export-builder">
+            <div class="modal-header">
+                <h2 id="exportBuilderTitle">Custom Report Builder</h2>
+                <button class="modal-close" aria-label="Close modal">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body export-builder-body">
+                <div class="export-builder-section">
+                    <h3>Report Title</h3>
+                    <input type="text" id="exportReportTitle" class="export-input" placeholder="DMARC Summary Report" value="DMARC Summary Report">
+                </div>
+
+                <div class="export-builder-section">
+                    <h3>Include Sections</h3>
+                    <div class="export-checkboxes">
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeSummary" checked>
+                            <span>Executive Summary</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeStats" checked>
+                            <span>Statistics Overview</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeCharts" checked>
+                            <span>Charts & Visualizations</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeTopSources" checked>
+                            <span>Top Source IPs</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeDomains" checked>
+                            <span>Domain Breakdown</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeFailures">
+                            <span>Failure Analysis</span>
+                        </label>
+                        <label class="export-checkbox">
+                            <input type="checkbox" id="exportIncludeRecommendations">
+                            <span>Recommendations</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="export-builder-section">
+                    <h3>Export Format</h3>
+                    <div class="export-format-options">
+                        <label class="export-format-option">
+                            <input type="radio" name="exportFormat" value="pdf" checked>
+                            <span class="export-format-card">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                </svg>
+                                <strong>PDF</strong>
+                                <small>Best for sharing</small>
+                            </span>
+                        </label>
+                        <label class="export-format-option">
+                            <input type="radio" name="exportFormat" value="csv">
+                            <span class="export-format-card">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <line x1="8" y1="13" x2="16" y2="13"></line>
+                                    <line x1="8" y1="17" x2="16" y2="17"></line>
+                                </svg>
+                                <strong>CSV</strong>
+                                <small>Raw data export</small>
+                            </span>
+                        </label>
+                        <label class="export-format-option">
+                            <input type="radio" name="exportFormat" value="json">
+                            <span class="export-format-card">
+                                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="16 18 22 12 16 6"></polyline>
+                                    <polyline points="8 6 2 12 8 18"></polyline>
+                                </svg>
+                                <strong>JSON</strong>
+                                <small>For developers</small>
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="export-builder-section">
+                    <h3>Date Range</h3>
+                    <p class="export-date-info">Using current filter: <strong id="exportDateRangeLabel">Last 365 days</strong></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" id="exportBuilderCancel">Cancel</button>
+                <button class="btn-primary" id="exportBuilderGenerate">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Generate Report
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Event listeners
+    modal.querySelector('.modal-close').addEventListener('click', () => closeModal(modal));
+    modal.querySelector('#exportBuilderCancel').addEventListener('click', () => closeModal(modal));
+    modal.querySelector('#exportBuilderGenerate').addEventListener('click', generateCustomReport);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal(modal);
+    });
+
+    // Update date range label
+    updateExportDateLabel();
+
+    return modal;
+}
+
+function updateExportDateLabel() {
+    const label = document.getElementById('exportDateRangeLabel');
+    if (!label) return;
+
+    if (currentFilters.startDate && currentFilters.endDate) {
+        label.textContent = `${currentFilters.startDate} to ${currentFilters.endDate}`;
+    } else {
+        const daysMap = {
+            '7': 'Last 7 days',
+            '30': 'Last 30 days',
+            '90': 'Last 90 days',
+            '365': 'Last 365 days',
+            '0': 'All time'
+        };
+        label.textContent = daysMap[currentFilters.days?.toString()] || `Last ${currentFilters.days} days`;
+    }
+}
+
+async function generateCustomReport() {
+    const format = document.querySelector('input[name="exportFormat"]:checked')?.value || 'pdf';
+    const title = document.getElementById('exportReportTitle')?.value || 'DMARC Summary Report';
+
+    const sections = {
+        summary: document.getElementById('exportIncludeSummary')?.checked,
+        stats: document.getElementById('exportIncludeStats')?.checked,
+        charts: document.getElementById('exportIncludeCharts')?.checked,
+        topSources: document.getElementById('exportIncludeTopSources')?.checked,
+        domains: document.getElementById('exportIncludeDomains')?.checked,
+        failures: document.getElementById('exportIncludeFailures')?.checked,
+        recommendations: document.getElementById('exportIncludeRecommendations')?.checked
+    };
+
+    showNotification('Generating report...', 'info');
+
+    try {
+        // For now, use existing export functionality
+        // In a full implementation, this would send sections config to backend
+        if (format === 'pdf') {
+            await exportData('pdf');
+        } else if (format === 'csv') {
+            await exportData('reports');
+        } else if (format === 'json') {
+            // Export as JSON
+            const queryString = buildQueryString();
+            const response = await fetch(`${API_BASE}/rollup/summary?${queryString}`);
+            const data = await response.json();
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `dmarc_report_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showNotification('JSON report downloaded', 'success');
+        }
+
+        closeModal(document.getElementById('exportBuilderModal'));
+    } catch (error) {
+        showNotification('Failed to generate report', 'error');
+        console.error('Export error:', error);
+    }
 }
 
 // Escape HTML to prevent XSS
