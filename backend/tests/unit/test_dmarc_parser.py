@@ -3,6 +3,7 @@ import pytest
 import gzip
 import zipfile
 import io
+from datetime import datetime
 from pathlib import Path
 from app.parsers.dmarc_parser import (
     parse_dmarc_report,
@@ -248,5 +249,10 @@ class TestFullParsing:
         report = parse_dmarc_report(valid_xml, "report.xml")
 
         # Timestamps in fixture are: begin=1704067200, end=1704153600
-        assert report.metadata.date_begin.year == 2024
-        assert report.metadata.date_end.year == 2024
+        # The parser uses datetime.fromtimestamp() (local time), so the
+        # exact date depends on the system timezone. Verify the parsed
+        # values match what datetime.fromtimestamp produces.
+        expected_begin = datetime.fromtimestamp(1704067200)
+        expected_end = datetime.fromtimestamp(1704153600)
+        assert report.metadata.date_begin == expected_begin
+        assert report.metadata.date_end == expected_end

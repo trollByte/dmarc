@@ -46,7 +46,7 @@ describe('Utility Functions', () => {
     };
 
     test('formats ISO date string correctly', () => {
-      const result = formatDate('2024-01-15T00:00:00Z');
+      const result = formatDate('2024-01-15T12:00:00Z');
       expect(result).toMatch(/Jan 15, 2024/);
     });
 

@@ -253,8 +253,7 @@ class TestBackupCodes:
         mock_user.totp_secret = "secret123"
         mock_user.hashed_password = "hashed"
 
-        with patch("app.services.totp_service.AuthService") as mock_auth:
-            mock_auth.verify_password.return_value = True
+        with patch("app.services.auth_service.AuthService.verify_password", return_value=True):
             result = service.disable(mock_user, "correct_password")
 
         assert result is True
@@ -266,7 +265,6 @@ class TestBackupCodes:
         mock_user = Mock()
         mock_user.hashed_password = "hashed"
 
-        with patch("app.services.totp_service.AuthService") as mock_auth:
-            mock_auth.verify_password.return_value = False
+        with patch("app.services.auth_service.AuthService.verify_password", return_value=False):
             with pytest.raises(TOTPError, match="Invalid password"):
                 service.disable(mock_user, "wrong_password")

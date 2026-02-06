@@ -215,7 +215,7 @@ class TestSeasonalityDetection:
             "Monday": 100, "Tuesday": 120, "Wednesday": 130,
             "Thursday": 125, "Friday": 110, "Saturday": 40, "Sunday": 30,
         }
-        assert service._has_significant_seasonality(pattern) is True
+        assert service._has_significant_seasonality(pattern) == True
 
     def test_no_seasonality_detected(self, service):
         """Test that uniform pattern shows no seasonality"""
@@ -223,7 +223,7 @@ class TestSeasonalityDetection:
             "Monday": 100, "Tuesday": 100, "Wednesday": 100,
             "Thursday": 100, "Friday": 100, "Saturday": 100, "Sunday": 100,
         }
-        assert service._has_significant_seasonality(pattern) is False
+        assert service._has_significant_seasonality(pattern) == False
 
     def test_all_zeros_no_seasonality(self, service):
         """Test that all-zero pattern shows no seasonality"""
@@ -231,7 +231,7 @@ class TestSeasonalityDetection:
             "Monday": 0, "Tuesday": 0, "Wednesday": 0,
             "Thursday": 0, "Friday": 0, "Saturday": 0, "Sunday": 0,
         }
-        assert service._has_significant_seasonality(pattern) is False
+        assert service._has_significant_seasonality(pattern) == False
 
 
 @pytest.mark.unit

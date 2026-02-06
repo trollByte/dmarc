@@ -19,7 +19,7 @@ from enum import Enum
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.models import Report, Record
+from app.models import DmarcReport as Report, DmarcRecord as Record
 
 logger = logging.getLogger(__name__)
 

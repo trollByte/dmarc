@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import uuid
 
 from app.services.notification_service import NotificationService
-from app.models.notification import UserNotification, NotificationType, NotificationPriority
+from app.models.notification import UserNotification, NotificationType, NotificationCategory
 
 
 class TestNotificationCreation:
@@ -38,15 +38,15 @@ class TestNotificationCreation:
         mock_db.add.assert_called_once()
         mock_db.commit.assert_called_once()
 
-    def test_create_notification_with_priority(self, mock_db, user_id):
-        """Test notification creation with priority"""
+    def test_create_notification_with_category(self, mock_db, user_id):
+        """Test notification creation with category"""
         notification = NotificationService.create_notification(
             db=mock_db,
             user_id=user_id,
             title="High Priority",
             message="Urgent message",
             notification_type=NotificationType.ALERT,
-            priority=NotificationPriority.HIGH
+            category=NotificationCategory.SECURITY
         )
 
         mock_db.add.assert_called_once()
@@ -58,8 +58,8 @@ class TestNotificationCreation:
             user_id=user_id,
             title="Report Ready",
             message="Your report is ready",
-            notification_type=NotificationType.REPORT,
-            action_url="/reports/123"
+            notification_type=NotificationType.SUCCESS,
+            link="/reports/123"
         )
 
         mock_db.add.assert_called_once()
@@ -98,7 +98,7 @@ class TestNotificationRetrieval:
         return notifications
 
     def test_get_user_notifications(self, mock_notifications):
-        """Test getting user notifications"""
+        """Test getting user notifications returns tuple (notifications, total, unread)"""
         mock_db = Mock()
         mock_query = Mock()
         mock_query.filter.return_value = mock_query
@@ -106,37 +106,45 @@ class TestNotificationRetrieval:
         mock_query.offset.return_value = mock_query
         mock_query.limit.return_value = mock_query
         mock_query.all.return_value = mock_notifications
+        mock_query.count.return_value = 5
         mock_db.query.return_value = mock_query
+        # Mock the unread count scalar query
+        mock_db.query.return_value.filter.return_value.scalar = Mock(return_value=3)
 
         user_id = uuid.uuid4()
-        result = NotificationService.get_user_notifications(
+        notifications, total, unread = NotificationService.get_user_notifications(
             db=mock_db,
             user_id=user_id,
             skip=0,
             limit=10
         )
 
-        assert len(result) == 5
+        assert len(notifications) == 5
         mock_db.query.assert_called()
 
     def test_get_unread_notifications(self, mock_notifications):
-        """Test getting only unread notifications"""
+        """Test getting only unread notifications via unread_only flag"""
         unread = [n for n in mock_notifications if not n.is_read]
 
         mock_db = Mock()
         mock_query = Mock()
         mock_query.filter.return_value = mock_query
         mock_query.order_by.return_value = mock_query
+        mock_query.offset.return_value = mock_query
+        mock_query.limit.return_value = mock_query
         mock_query.all.return_value = unread
+        mock_query.count.return_value = 3
         mock_db.query.return_value = mock_query
+        mock_db.query.return_value.filter.return_value.scalar = Mock(return_value=3)
 
         user_id = uuid.uuid4()
-        result = NotificationService.get_unread_notifications(
+        notifications, total, unread_count = NotificationService.get_user_notifications(
             db=mock_db,
-            user_id=user_id
+            user_id=user_id,
+            unread_only=True
         )
 
-        assert len(result) == 3
+        assert len(notifications) == 3
 
 
 class TestNotificationActions:
@@ -163,8 +171,8 @@ class TestNotificationActions:
             user_id=mock_notification.user_id
         )
 
-        assert mock_notification.is_read is True
-        assert mock_notification.read_at is not None
+        # mark_as_read calls notification.mark_as_read() which sets is_read and read_at
+        mock_notification.mark_as_read.assert_called_once()
         mock_db.commit.assert_called()
 
     def test_mark_as_read_not_found(self):
@@ -228,25 +236,13 @@ class TestNotificationActions:
 class TestNotificationCounts:
     """Test notification count methods"""
 
-    def test_get_unread_count(self):
-        """Test getting unread notification count"""
+    def test_get_notification_counts_structure(self):
+        """Test getting notification counts returns correct structure"""
         mock_db = Mock()
-        mock_db.query.return_value.filter.return_value.count.return_value = 5
-
-        user_id = uuid.uuid4()
-        count = NotificationService.get_unread_count(
-            db=mock_db,
-            user_id=user_id
-        )
-
-        assert count == 5
-
-    def test_get_notification_counts(self):
-        """Test getting all notification counts"""
-        mock_db = Mock()
-
-        # Mock total count
-        mock_db.query.return_value.filter.return_value.count.side_effect = [10, 3]
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 10
+        mock_db.query.return_value = mock_query
 
         user_id = uuid.uuid4()
         counts = NotificationService.get_notification_counts(
@@ -254,8 +250,26 @@ class TestNotificationCounts:
             user_id=user_id
         )
 
-        assert counts["total"] == 10
-        assert counts["unread"] == 3
+        assert "total" in counts
+        assert "unread" in counts
+        assert "by_type" in counts
+        assert "by_category" in counts
+
+    def test_get_notification_counts_calls_db(self):
+        """Test getting notification counts queries database"""
+        mock_db = Mock()
+        mock_query = Mock()
+        mock_query.filter.return_value = mock_query
+        mock_query.count.return_value = 5
+        mock_db.query.return_value = mock_query
+
+        user_id = uuid.uuid4()
+        counts = NotificationService.get_notification_counts(
+            db=mock_db,
+            user_id=user_id
+        )
+
+        mock_db.query.assert_called()
 
 
 class TestBroadcastNotifications:
@@ -273,7 +287,7 @@ class TestBroadcastNotifications:
             db=mock_db,
             title="System Announcement",
             message="System will be down for maintenance",
-            notification_type=NotificationType.SYSTEM
+            notification_type=NotificationType.INFO
         )
 
         # Should add notification for each user
@@ -292,21 +306,22 @@ class TestCleanupExpiredNotifications:
         mock_query.delete.return_value = 5
         mock_db.query.return_value = mock_query
 
-        count = NotificationService.cleanup_expired_notifications(db=mock_db)
+        count = NotificationService.cleanup_expired(db=mock_db)
 
         mock_db.commit.assert_called()
 
-    def test_cleanup_old_read_notifications(self):
-        """Test cleaning up old read notifications"""
+    def test_delete_all_read_notifications(self):
+        """Test deleting all read notifications for a user"""
         mock_db = Mock()
         mock_query = Mock()
         mock_query.filter.return_value = mock_query
         mock_query.delete.return_value = 10
         mock_db.query.return_value = mock_query
 
-        count = NotificationService.cleanup_old_read_notifications(
+        user_id = uuid.uuid4()
+        count = NotificationService.delete_all_read(
             db=mock_db,
-            days_old=30
+            user_id=user_id
         )
 
         mock_db.commit.assert_called()

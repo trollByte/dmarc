@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, MagicMock
 import jwt
 
-from app.services.auth_service import AuthService
+from app.services.auth_service import AuthService, PasswordValidationError
 from app.models.user import User, UserRole
 
 
@@ -54,47 +54,52 @@ class TestPasswordHashing:
 class TestPasswordValidation:
     """Test password policy validation"""
 
+    @pytest.fixture(autouse=True)
+    def mock_settings(self):
+        """Mock settings for password policy"""
+        with patch("app.services.auth_service.settings") as mock_s:
+            mock_s.password_min_length = 8
+            mock_s.password_require_uppercase = True
+            mock_s.password_require_lowercase = True
+            mock_s.password_require_digit = True
+            mock_s.password_require_special = True
+            yield mock_s
+
     def test_valid_password(self):
         """Test valid password passes validation"""
         password = "SecurePass123!"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is True
-        assert error is None
+        # Should not raise
+        AuthService.validate_password_policy(password)
 
     def test_password_too_short(self):
         """Test short password fails validation"""
         password = "Short1!"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is False
-        assert "length" in error.lower()
+        with pytest.raises(PasswordValidationError, match="at least"):
+            AuthService.validate_password_policy(password)
 
     def test_password_no_uppercase(self):
         """Test password without uppercase fails"""
         password = "nouppercase123!"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is False
-        assert "uppercase" in error.lower()
+        with pytest.raises(PasswordValidationError, match="uppercase"):
+            AuthService.validate_password_policy(password)
 
     def test_password_no_lowercase(self):
         """Test password without lowercase fails"""
         password = "NOLOWERCASE123!"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is False
-        assert "lowercase" in error.lower()
+        with pytest.raises(PasswordValidationError, match="lowercase"):
+            AuthService.validate_password_policy(password)
 
     def test_password_no_digit(self):
         """Test password without digit fails"""
         password = "NoDigitsHere!"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is False
-        assert "digit" in error.lower()
+        with pytest.raises(PasswordValidationError, match="digit"):
+            AuthService.validate_password_policy(password)
 
     def test_password_no_special(self):
         """Test password without special char fails"""
         password = "NoSpecialChar123"
-        is_valid, error = AuthService.validate_password_strength(password)
-        assert is_valid is False
-        assert "special" in error.lower()
+        with pytest.raises(PasswordValidationError, match="special"):
+            AuthService.validate_password_policy(password)
 
 
 class TestJWTTokens:
@@ -112,10 +117,11 @@ class TestJWTTokens:
 
     def test_create_access_token(self, mock_settings):
         """Test access token creation"""
-        with patch("app.services.auth_service.get_settings", return_value=mock_settings):
+        with patch("app.services.auth_service.settings", mock_settings):
             token = AuthService.create_access_token(
-                data={"sub": "user123"},
-                expires_delta=timedelta(minutes=15)
+                user_id="user123",
+                username="testuser",
+                role=UserRole.VIEWER
             )
 
             assert token is not None
@@ -130,11 +136,12 @@ class TestJWTTokens:
 
     def test_access_token_expiration(self, mock_settings):
         """Test access token has correct expiration"""
-        with patch("app.services.auth_service.get_settings", return_value=mock_settings):
-            expires_delta = timedelta(minutes=30)
+        mock_settings.jwt_access_token_expire_minutes = 30
+        with patch("app.services.auth_service.settings", mock_settings):
             token = AuthService.create_access_token(
-                data={"sub": "user123"},
-                expires_delta=expires_delta
+                user_id="user123",
+                username="testuser",
+                role=UserRole.VIEWER
             )
 
             decoded = jwt.decode(
@@ -152,9 +159,9 @@ class TestJWTTokens:
 
     def test_create_refresh_token(self, mock_settings):
         """Test refresh token creation"""
-        with patch("app.services.auth_service.get_settings", return_value=mock_settings):
+        with patch("app.services.auth_service.settings", mock_settings):
             token = AuthService.create_refresh_token(
-                data={"sub": "user123"}
+                user_id="user123"
             )
 
             assert token is not None
@@ -178,9 +185,11 @@ class TestUserAuthentication:
         user.email = "test@example.com"
         user.hashed_password = AuthService.hash_password("ValidPassword123!")
         user.is_active = True
-        user.role = UserRole.USER.value
+        user.role = UserRole.VIEWER.value
         user.failed_login_attempts = 0
-        user.locked_until = None
+        user.is_locked = False
+        user.updated_at = None
+        user.last_login = None
         return user
 
     def test_authenticate_valid_user(self, mock_user):
@@ -188,9 +197,9 @@ class TestUserAuthentication:
         mock_db = Mock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_user
 
-        with patch("app.services.auth_service.get_settings") as mock_settings:
-            mock_settings.return_value.max_failed_login_attempts = 5
-            mock_settings.return_value.account_lockout_duration_minutes = 30
+        with patch("app.services.auth_service.settings") as mock_settings:
+            mock_settings.max_failed_login_attempts = 5
+            mock_settings.account_lockout_duration_minutes = 30
 
             result = AuthService.authenticate_user(
                 mock_db,
@@ -206,9 +215,9 @@ class TestUserAuthentication:
         mock_db = Mock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_user
 
-        with patch("app.services.auth_service.get_settings") as mock_settings:
-            mock_settings.return_value.max_failed_login_attempts = 5
-            mock_settings.return_value.account_lockout_duration_minutes = 30
+        with patch("app.services.auth_service.settings") as mock_settings:
+            mock_settings.max_failed_login_attempts = 5
+            mock_settings.account_lockout_duration_minutes = 30
 
             result = AuthService.authenticate_user(
                 mock_db,
@@ -237,23 +246,29 @@ class TestUserAuthentication:
         mock_db = Mock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_user
 
-        result = AuthService.authenticate_user(
-            mock_db,
-            "testuser",
-            "ValidPassword123!"
-        )
+        with patch("app.services.auth_service.settings") as mock_settings:
+            mock_settings.max_failed_login_attempts = 5
+            mock_settings.account_lockout_duration_minutes = 30
 
-        assert result is None
+            result = AuthService.authenticate_user(
+                mock_db,
+                "testuser",
+                "ValidPassword123!"
+            )
+
+            assert result is None
 
     def test_authenticate_locked_user(self, mock_user):
         """Test authentication with locked user"""
-        mock_user.locked_until = datetime.utcnow() + timedelta(hours=1)
+        mock_user.is_locked = True
+        # Set updated_at to recently so the lock hasn't expired
+        mock_user.updated_at = datetime.utcnow()
         mock_db = Mock()
         mock_db.query.return_value.filter.return_value.first.return_value = mock_user
 
-        with patch("app.services.auth_service.get_settings") as mock_settings:
-            mock_settings.return_value.max_failed_login_attempts = 5
-            mock_settings.return_value.account_lockout_duration_minutes = 30
+        with patch("app.services.auth_service.settings") as mock_settings:
+            mock_settings.max_failed_login_attempts = 5
+            mock_settings.account_lockout_duration_minutes = 30
 
             result = AuthService.authenticate_user(
                 mock_db,

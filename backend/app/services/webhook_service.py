@@ -177,6 +177,7 @@ class WebhookService:
             endpoint_id=endpoint.id,
             event_type=event.value,
             payload=payload,
+            attempt_number=1,
         )
         self.db.add(delivery)
         self.db.commit()
