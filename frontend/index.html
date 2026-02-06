@@ -91,11 +91,11 @@
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                         <span class="sidebar-item-text">Alerts</span>
                     </button>
-                    <button class="sidebar-item" data-page="threat-intel" title="Threat Intel">
+                    <button class="sidebar-item" data-page="threats" title="Threat Intel">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                         <span class="sidebar-item-text">Threat Intel</span>
                     </button>
-                    <button class="sidebar-item" data-page="geo-map" title="Geo Map">
+                    <button class="sidebar-item" data-page="geomap" title="Geo Map">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
                         <span class="sidebar-item-text">Geo Map</span>
                     </button>
@@ -104,15 +104,15 @@
                 <!-- Analysis -->
                 <div class="sidebar-section">
                     <span class="sidebar-section-label">Analysis</span>
-                    <button class="sidebar-item" data-page="health-scores" title="Health Scores">
+                    <button class="sidebar-item" data-page="health" title="Health Scores">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
                         <span class="sidebar-item-text">Health Scores</span>
                     </button>
-                    <button class="sidebar-item" data-page="policy-advisor" title="Policy Advisor">
+                    <button class="sidebar-item" data-page="advisor" title="Policy Advisor">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>
                         <span class="sidebar-item-text">Policy Advisor</span>
                     </button>
-                    <button class="sidebar-item" data-page="ml-anomalies" title="ML &amp; Anomalies">
+                    <button class="sidebar-item" data-page="ml-models" title="ML &amp; Anomalies">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>
                         <span class="sidebar-item-text">ML &amp; Anomalies</span>
                     </button>
@@ -146,7 +146,7 @@
                 <!-- Tools -->
                 <div class="sidebar-section">
                     <span class="sidebar-section-label">Tools</span>
-                    <button class="sidebar-item" data-page="record-generator" title="Record Generator">
+                    <button class="sidebar-item" data-page="generator" title="Record Generator">
                         <svg class="sidebar-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
                         <span class="sidebar-item-text">Record Generator</span>
                     </button>
@@ -364,17 +364,18 @@
                     <!-- Feature page sections -->
                     <section id="page-reports" class="page-section" hidden></section>
                     <section id="page-alerts" class="page-section" hidden></section>
-                    <section id="page-threat-intel" class="page-section" hidden></section>
-                    <section id="page-geo-map" class="page-section" hidden></section>
-                    <section id="page-health-scores" class="page-section" hidden></section>
-                    <section id="page-policy-advisor" class="page-section" hidden></section>
-                    <section id="page-ml-anomalies" class="page-section" hidden></section>
+                    <section id="page-threats" class="page-section" hidden></section>
+                    <section id="page-geomap" class="page-section" hidden></section>
+                    <section id="page-health" class="page-section" hidden></section>
+                    <section id="page-advisor" class="page-section" hidden></section>
+                    <section id="page-ml-models" class="page-section" hidden></section>
                     <section id="page-forecasting" class="page-section" hidden></section>
                     <section id="page-dns-monitor" class="page-section" hidden></section>
                     <section id="page-mta-sts" class="page-section" hidden></section>
                     <section id="page-tls-rpt" class="page-section" hidden></section>
                     <section id="page-bimi" class="page-section" hidden></section>
-                    <section id="page-record-generator" class="page-section" hidden></section>
+                    <section id="page-generator" class="page-section" hidden></section>
+                    <section id="page-notifications" class="page-section" hidden></section>
                     <section id="page-saved-views" class="page-section" hidden></section>
                     <section id="page-scheduled-reports" class="page-section" hidden></section>
                     <section id="page-users" class="page-section" hidden></section>
