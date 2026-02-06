@@ -166,7 +166,7 @@ class TLSRPTService:
             if data[:2] == b'\x1f\x8b':  # Gzip magic number
                 data = gzip.decompress(data)
         except Exception:
-            pass
+            logger.debug("Failed to decompress gzipped TLS-RPT data, trying as raw JSON")
 
         # Parse JSON
         try:

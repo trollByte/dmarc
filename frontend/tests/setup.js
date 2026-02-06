@@ -12,7 +12,11 @@ const localStorageMock = {
   removeItem: jest.fn(),
   clear: jest.fn(),
 };
-global.localStorage = localStorageMock;
+Object.defineProperty(window, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true,
+});
 
 // Mock sessionStorage
 const sessionStorageMock = {
@@ -21,7 +25,11 @@ const sessionStorageMock = {
   removeItem: jest.fn(),
   clear: jest.fn(),
 };
-global.sessionStorage = sessionStorageMock;
+Object.defineProperty(window, 'sessionStorage', {
+  value: sessionStorageMock,
+  writable: true,
+  configurable: true,
+});
 
 // Mock fetch
 global.fetch = jest.fn(() =>
@@ -67,7 +75,18 @@ global.URL.revokeObjectURL = jest.fn();
 // Reset mocks before each test
 beforeEach(() => {
   jest.clearAllMocks();
-  localStorage.getItem.mockReturnValue(null);
+  // Re-assign mocks in case restoreAllMocks cleared them
+  Object.defineProperty(window, 'localStorage', {
+    value: localStorageMock,
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(window, 'sessionStorage', {
+    value: sessionStorageMock,
+    writable: true,
+    configurable: true,
+  });
+  localStorageMock.getItem.mockReturnValue(null);
   // Clear DOM for fresh test environment
   while (document.body.firstChild) {
     document.body.removeChild(document.body.firstChild);

@@ -337,7 +337,7 @@ class SPFFlatteningService:
                         for a in a_answers:
                             ips.add(str(a))
                     except Exception:
-                        pass
+                        logger.debug("Failed to resolve A records for %s", mx_host)
             else:  # a
                 a_answers = self.resolver.resolve(domain, 'A')
                 for a in a_answers:

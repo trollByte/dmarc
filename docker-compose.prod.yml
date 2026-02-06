@@ -1,0 +1,55 @@
+# Production override for docker-compose.yml
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+services:
+  db:
+    ports: !reset []
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    command: >
+      postgres
+        -c ssl=off
+        -c log_connections=on
+        -c log_disconnections=on
+        -c log_statement=ddl
+
+  redis:
+    ports: !reset []
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass ${REDIS_PASSWORD} --rename-command FLUSHALL "" --rename-command FLUSHDB "" --rename-command DEBUG ""
+
+  backend:
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DEBUG: "false"
+    volumes:
+      - app_logs:/app/logs
+
+  nginx:
+    restart: always
+
+  celery-worker:
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+
+  celery-beat:
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+
+  flower:
+    ports: !reset []
+    restart: always
+    environment:
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      CELERY_RESULT_BACKEND: db+postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}

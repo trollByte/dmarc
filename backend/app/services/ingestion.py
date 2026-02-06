@@ -195,7 +195,8 @@ class IngestionService:
                     parse_error=str(e)
                 )
                 return False, record
-            except:
+            except Exception as e:
+                logger.error("Ingestion failed: %s", e)
                 return False, None
 
     def ingest_from_inbox(

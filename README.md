@@ -222,6 +222,8 @@ Use the admin credentials you created to login via the dashboard or API.
 
 ## 🔐 Authentication
 
+The platform uses JWT-based authentication. Access tokens expire after 15 minutes, and refresh tokens last 7 days.
+
 ### Login (Get JWT Token)
 ```bash
 curl -X POST http://localhost:8000/auth/login \
@@ -241,9 +243,59 @@ curl -X POST http://localhost:8000/auth/login \
 }
 ```
 
-### Use Token in Requests
+### Use the Bearer Token in API Calls
+Include the access token in the `Authorization` header for all protected endpoints:
 ```bash
 curl -H "Authorization: Bearer <access_token>" http://localhost:8000/api/reports
+
+# Example: Get report summary
+curl -H "Authorization: Bearer <access_token>" http://localhost:8000/api/rollup/summary
+
+# Example: Upload a report
+curl -X POST http://localhost:8000/api/upload \
+  -H "Authorization: Bearer <access_token>" \
+  -F "files=@report.xml.gz"
+```
+
+### Refresh an Expired Token
+When your access token expires (after 15 minutes), use the refresh token to obtain a new one without re-entering credentials:
+```bash
+curl -X POST http://localhost:8000/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "<refresh_token>"
+  }'
+```
+
+**Response** (new access token):
+```json
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "token_type": "bearer"
+}
+```
+
+### API Key Authentication
+For automated scripts and integrations, API keys provide long-lived authentication without token refresh.
+
+**Generate an API key:**
+```bash
+curl -X POST http://localhost:8000/users/api-keys \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-script"}'
+```
+
+**Use the API key:**
+```bash
+curl -H "X-API-Key: <api_key>" http://localhost:8000/api/reports
+```
+
+### Logout
+Invalidate your tokens:
+```bash
+curl -X POST http://localhost:8000/auth/logout \
+  -H "Authorization: Bearer <access_token>"
 ```
 
 ---

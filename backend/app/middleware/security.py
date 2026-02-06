@@ -43,8 +43,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Default CSP directives
         self.csp_directives = csp_directives or {
             "default-src": "'self'",
-            "script-src": "'self' 'unsafe-inline' 'unsafe-eval'",  # Allow inline scripts for dashboard
-            "style-src": "'self' 'unsafe-inline'",  # Allow inline styles
+            "script-src": "'self' 'unsafe-inline'",  # TODO: Replace 'unsafe-inline' with nonces for stricter CSP
+            "style-src": "'self' 'unsafe-inline'",  # TODO: Replace 'unsafe-inline' with nonces for stricter CSP
             "img-src": "'self' data: https:",  # Allow data URIs and HTTPS images
             "font-src": "'self' https:",
             "connect-src": "'self' https:",  # Allow API calls

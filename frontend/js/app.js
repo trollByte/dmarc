@@ -1,6 +1,252 @@
 // API Base URL
 const API_BASE = '/api';
 
+// ==========================================
+// AUTHENTICATION
+// ==========================================
+
+let accessToken = null;
+let refreshToken = null;
+let currentUser = null;
+let isRefreshingToken = false;
+
+function getAuthHeaders() {
+    if (accessToken) {
+        return { 'Authorization': 'Bearer ' + accessToken };
+    }
+    return {};
+}
+
+function showLoginOverlay() {
+    const overlay = document.getElementById('loginOverlay');
+    const dashboard = document.getElementById('dashboardContainer');
+    if (overlay) overlay.style.display = '';
+    if (dashboard) dashboard.style.display = 'none';
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById('loginOverlay');
+    const dashboard = document.getElementById('dashboardContainer');
+    if (overlay) overlay.style.display = 'none';
+    if (dashboard) dashboard.style.display = '';
+}
+
+function updateUserMenu() {
+    const userMenu = document.getElementById('userMenu');
+    const displayName = document.getElementById('userDisplayName');
+    const menuUsername = document.getElementById('userMenuUsername');
+    const menuRole = document.getElementById('userMenuRole');
+    if (currentUser && userMenu) {
+        userMenu.hidden = false;
+        if (displayName) displayName.textContent = currentUser.username || '';
+        if (menuUsername) menuUsername.textContent = currentUser.username || '';
+        if (menuRole) menuRole.textContent = currentUser.role || '';
+    } else if (userMenu) {
+        userMenu.hidden = true;
+    }
+}
+
+async function login(username, password) {
+    const errorEl = document.getElementById('loginError');
+    const submitBtn = document.getElementById('loginSubmitBtn');
+    if (errorEl) errorEl.hidden = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Signing in...';
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.detail || 'Invalid credentials');
+        }
+
+        const data = await response.json();
+        accessToken = data.access_token;
+        refreshToken = data.refresh_token;
+
+        // Fetch user info
+        await fetchCurrentUser();
+
+        hideLoginOverlay();
+        updateUserMenu();
+
+        // Load dashboard now that we are authenticated
+        await loadDashboard();
+        await loadComparisonData();
+        renderStatCardSparklines();
+        renderPeriodComparisons();
+        startSmartRefresh();
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = err.message;
+            errorEl.hidden = false;
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign In';
+        }
+    }
+}
+
+async function fetchCurrentUser() {
+    try {
+        const response = await fetch(`${API_BASE}/auth/me`, {
+            headers: getAuthHeaders()
+        });
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.user || data;
+        }
+    } catch (e) {
+        // Silently fail - user info is not critical
+    }
+}
+
+async function refreshAccessToken() {
+    if (isRefreshingToken || !refreshToken) return false;
+    isRefreshingToken = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh_token: refreshToken })
+        });
+
+        if (!response.ok) {
+            // Refresh failed - force re-login
+            accessToken = null;
+            refreshToken = null;
+            currentUser = null;
+            showLoginOverlay();
+            updateUserMenu();
+            return false;
+        }
+
+        const data = await response.json();
+        accessToken = data.access_token;
+        return true;
+    } catch (e) {
+        return false;
+    } finally {
+        isRefreshingToken = false;
+    }
+}
+
+async function logout() {
+    try {
+        if (accessToken && refreshToken) {
+            await fetch(`${API_BASE}/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getAuthHeaders()
+                },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+        }
+    } catch (e) {
+        // Logout API call is best-effort
+    }
+
+    accessToken = null;
+    refreshToken = null;
+    currentUser = null;
+    showLoginOverlay();
+    updateUserMenu();
+
+    // Clear login form
+    const usernameInput = document.getElementById('loginUsername');
+    const passwordInput = document.getElementById('loginPassword');
+    const errorEl = document.getElementById('loginError');
+    if (usernameInput) usernameInput.value = '';
+    if (passwordInput) passwordInput.value = '';
+    if (errorEl) errorEl.hidden = true;
+}
+
+// Wrap the native fetch to inject auth headers and handle 401s
+const _originalFetch = window.fetch;
+window.fetch = async function(url, options = {}) {
+    // Only inject auth headers for API calls (not for the auth endpoints themselves during login)
+    const urlStr = typeof url === 'string' ? url : url.toString();
+    const isApiCall = urlStr.startsWith(API_BASE) || urlStr.startsWith('/api');
+    const isAuthEndpoint = urlStr.includes('/auth/login') || urlStr.includes('/auth/refresh');
+
+    if (isApiCall && !isAuthEndpoint && accessToken) {
+        options.headers = {
+            ...options.headers,
+            ...getAuthHeaders()
+        };
+    }
+
+    let response = await _originalFetch.call(window, url, options);
+
+    // If 401 on an API call, try refreshing the token once
+    if (response.status === 401 && isApiCall && !isAuthEndpoint && refreshToken) {
+        const refreshed = await refreshAccessToken();
+        if (refreshed) {
+            // Retry with new token
+            options.headers = {
+                ...options.headers,
+                ...getAuthHeaders()
+            };
+            response = await _originalFetch.call(window, url, options);
+        }
+    }
+
+    // If still 401, show login
+    if (response.status === 401 && isApiCall && !isAuthEndpoint) {
+        showLoginOverlay();
+        updateUserMenu();
+    }
+
+    return response;
+};
+
+function setupAuthEventListeners() {
+    // Login form submission
+    const loginForm = document.getElementById('loginForm');
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            if (username && password) {
+                login(username, password);
+            }
+        });
+    }
+
+    // Logout button
+    document.getElementById('logoutBtn')?.addEventListener('click', logout);
+
+    // User menu dropdown toggle
+    const userMenuTrigger = document.getElementById('userMenuTrigger');
+    const userMenuDropdown = document.getElementById('userMenuDropdown');
+    if (userMenuTrigger && userMenuDropdown) {
+        userMenuTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = !userMenuDropdown.hidden;
+            userMenuDropdown.hidden = isOpen;
+            userMenuTrigger.setAttribute('aria-expanded', String(!isOpen));
+        });
+
+        // Close user menu on outside click
+        document.addEventListener('click', () => {
+            userMenuDropdown.hidden = true;
+            userMenuTrigger.setAttribute('aria-expanded', 'false');
+        });
+    }
+}
+
 // Chart instances
 let timelineChart, domainChart, sourceIpChart, dispositionChart;
 let alignmentChart, complianceChart, failureTrendChart, topOrganizationsChart;
@@ -1142,6 +1388,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize theme first
     initTheme();
 
+    // Set up auth event listeners (login form, logout button)
+    setupAuthEventListeners();
+
     // Set up all event listeners
     setupEventListeners();
 
@@ -1172,21 +1421,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up visibility handler for smart refresh
     setupVisibilityHandler();
 
-    // Check if first run and show onboarding
-    const isFirstRun = checkFirstRun();
-    if (isFirstRun) {
-        showOnboarding();
-    }
-
-    // Load dashboard with skeleton states
-    await loadDashboard();
-
-    // Load comparison data and render sparklines
-    await loadComparisonData();
-    renderStatCardSparklines();
-
-    // Start smart auto-refresh (checks for new data without auto-reloading)
-    startSmartRefresh();
+    // Show login overlay by default - dashboard loads after successful login
+    showLoginOverlay();
 });
 
 // ==========================================
@@ -1652,10 +1888,13 @@ async function loadDashboard() {
         // Ignore
     }
 
-    // Check for any failures
-    const failures = results.filter((r, i) => r.status === 'rejected');
+    // Check for any failures and show user-visible error indication
+    const failures = results.map((r, i) => ({ result: r, task: allTasks[i] }))
+        .filter(({ result }) => result.status === 'rejected');
     if (failures.length > 0) {
         console.error('Some dashboard components failed to load:', failures);
+        const failedNames = failures.map(f => f.task.name).join(', ');
+        showNotification(`Some components failed to load: ${failedNames}. Click retry to try again.`, 'error');
     }
 
     hideLoadingProgress();
@@ -2157,14 +2396,29 @@ async function loadDispositionChart() {
 
 // Load reports table - using safe DOM methods to prevent XSS
 async function loadReportsTable() {
-    const queryString = buildQueryString({ page_size: 20 });
-    const response = await fetch(`${API_BASE}/reports?${queryString}`);
-    const data = await response.json();
-
     const tbody = document.getElementById('reportsTableBody');
     const table = document.getElementById('reportsTable');
     const emptyState = document.getElementById('tableEmptyState');
     const countEl = document.getElementById('tableResultCount');
+
+    let data;
+    try {
+        const queryString = buildQueryString({ page_size: 20 });
+        const response = await fetch(`${API_BASE}/reports?${queryString}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        data = await response.json();
+    } catch (error) {
+        console.error('Error loading reports table:', error);
+        if (tbody) {
+            tbody.textContent = '';
+            const row = tbody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = 6;
+            cell.className = 'error';
+            cell.textContent = 'Failed to load reports. Please try refreshing.';
+        }
+        throw error;
+    }
 
     tbody.textContent = ''; // Clear existing content
 
@@ -3052,6 +3306,41 @@ function renderStatCardSparklines() {
     }
 }
 
+function renderPeriodComparisons() {
+    if (!trendDataCache.passRate.length || trendDataCache.passRate.length < 4) return;
+
+    // Split data into two halves for period-over-period comparison
+    const midpoint = Math.floor(trendDataCache.passRate.length / 2);
+
+    // Pass rate comparison
+    const passComparison = calculatePeriodComparison(
+        trendDataCache.passRate.slice(midpoint),
+        trendDataCache.passRate.slice(0, midpoint)
+    );
+    const passRateTrend = document.getElementById('passRateTrend');
+    if (passRateTrend) renderComparisonIndicator(passRateTrend, passComparison, 'passRate');
+
+    // Fail rate comparison
+    const failComparison = calculatePeriodComparison(
+        trendDataCache.failRate.slice(midpoint),
+        trendDataCache.failRate.slice(0, midpoint)
+    );
+    const failRateTrend = document.getElementById('failRateTrend');
+    if (failRateTrend) renderComparisonIndicator(failRateTrend, failComparison, 'failRate');
+
+    // Message volume comparison
+    const volumeComparison = calculatePeriodComparison(
+        trendDataCache.messageVolume.slice(midpoint),
+        trendDataCache.messageVolume.slice(0, midpoint)
+    );
+    const totalMessagesTrend = document.getElementById('totalMessagesTrend');
+    if (totalMessagesTrend) renderComparisonIndicator(totalMessagesTrend, volumeComparison, 'messages');
+
+    // Total reports comparison (reuse message volume data as proxy)
+    const totalReportsTrend = document.getElementById('totalReportsTrend');
+    if (totalReportsTrend) renderComparisonIndicator(totalReportsTrend, volumeComparison, 'reports');
+}
+
 function calculatePeriodComparison(currentData, previousData) {
     if (!currentData || !previousData) return null;
 
@@ -3560,14 +3849,40 @@ function resetDashboardLayout() {
 }
 
 function applyWidgetVisibility() {
-    // This would hide/show widgets based on pinnedWidgets
-    // For now, we'll just toggle secondary charts visibility
+    // Map widget IDs to their DOM selectors
+    const widgetSelectors = {
+        stats: '.stats-section',
+        timeline: '#timelineChart',
+        domain: '#domainChart',
+        sourceIp: '#sourceIpChart',
+        disposition: '#dispositionChart',
+        alignment: '#alignmentChart',
+        compliance: '#complianceChart',
+        failureTrend: '#failureTrendChart',
+        topOrgs: '#topOrganizationsChart',
+        reportsTable: '.table-section'
+    };
+
+    // Toggle visibility for each widget
+    Object.entries(widgetSelectors).forEach(([widgetId, selector]) => {
+        const el = document.querySelector(selector);
+        if (!el) return;
+
+        // For chart canvases, toggle the parent .chart-container
+        const target = el.tagName === 'CANVAS' ? el.closest('.chart-container') : el;
+        if (!target) return;
+
+        const isVisible = pinnedWidgets.length === 0 || pinnedWidgets.includes(widgetId);
+        target.style.display = isVisible ? '' : 'none';
+    });
+
+    // Toggle secondary charts section visibility
     const secondaryCharts = document.querySelector('.charts-section-secondary');
     if (secondaryCharts) {
-        const hasSecondaryPinned = pinnedWidgets.some(id =>
+        const hasSecondaryPinned = pinnedWidgets.length === 0 || pinnedWidgets.some(id =>
             ['alignment', 'compliance', 'failureTrend', 'topOrgs'].includes(id)
         );
-        // Don't hide the section, just mark visibility preference
+        secondaryCharts.style.display = hasSecondaryPinned ? '' : 'none';
     }
 }
 

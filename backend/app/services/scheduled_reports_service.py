@@ -359,23 +359,71 @@ class ScheduledReportsService:
         return self.run_schedule(schedule)
 
     def _generate_report_data(self, schedule: ScheduledReport) -> Dict[str, Any]:
-        """Generate report data based on type"""
-        # This would integrate with analytics/reporting services
-        # Placeholder implementation
+        """Generate report data by querying actual DMARC data for the period."""
+        from sqlalchemy import func
+        from app.models.dmarc import DmarcReport, DmarcRecord
+
+        date_start = datetime.utcnow() - timedelta(days=schedule.date_range_days)
+        date_end = datetime.utcnow()
+
+        # Base query for reports in the date range
+        report_query = self.db.query(DmarcReport).filter(
+            DmarcReport.date_begin >= date_start,
+            DmarcReport.date_end <= date_end,
+        )
+
+        if schedule.domains:
+            report_query = report_query.filter(DmarcReport.domain.in_(schedule.domains))
+
+        report_ids = [r.id for r in report_query.all()]
+        total_reports = len(report_ids)
+
+        # Get record-level stats
+        total_messages = 0
+        pass_count = 0
+        fail_count = 0
+        top_failing_domains: Dict[str, int] = {}
+
+        if report_ids:
+            records = self.db.query(DmarcRecord).filter(
+                DmarcRecord.report_id.in_(report_ids)
+            ).all()
+
+            for record in records:
+                total_messages += record.count
+                dkim_pass = record.dkim and record.dkim.lower() == "pass"
+                spf_pass = record.spf and record.spf.lower() == "pass"
+                if dkim_pass or spf_pass:
+                    pass_count += record.count
+                else:
+                    fail_count += record.count
+                    domain = record.header_from or "unknown"
+                    top_failing_domains[domain] = top_failing_domains.get(domain, 0) + record.count
+
+        pass_rate = (pass_count / total_messages * 100) if total_messages > 0 else 0.0
+
+        # Sort top failing domains by count descending
+        sorted_failing = sorted(top_failing_domains.items(), key=lambda x: x[1], reverse=True)[:10]
+
         return {
             "report_type": schedule.report_type,
             "generated_at": datetime.utcnow().isoformat(),
             "date_range": {
-                "start": (datetime.utcnow() - timedelta(days=schedule.date_range_days)).isoformat(),
-                "end": datetime.utcnow().isoformat(),
+                "start": date_start.isoformat(),
+                "end": date_end.isoformat(),
             },
             "domains": schedule.domains or ["All domains"],
             "summary": {
-                "total_reports": 0,
-                "pass_rate": 0.0,
-                "fail_count": 0,
+                "total_reports": total_reports,
+                "total_messages": total_messages,
+                "pass_count": pass_count,
+                "fail_count": fail_count,
+                "pass_rate": round(pass_rate, 2),
             },
-            "sections": [],
+            "top_failing_domains": [
+                {"domain": domain, "fail_count": count}
+                for domain, count in sorted_failing
+            ],
         }
 
     def _default_email_body(self, schedule: ScheduledReport) -> str:

@@ -281,7 +281,15 @@ class AuthService:
 
         # Check if account is locked
         if user.is_locked:
-            return None
+            # Auto-unlock if lockout duration has elapsed.
+            # Use updated_at as a proxy for when the lock occurred.
+            lockout_minutes = getattr(settings, 'account_lockout_duration_minutes', 30)
+            if user.updated_at and (datetime.utcnow() - user.updated_at) >= timedelta(minutes=lockout_minutes):
+                user.is_locked = False
+                user.failed_login_attempts = 0
+                db.commit()
+            else:
+                return None
 
         # Verify password
         if not AuthService.verify_password(password, user.hashed_password):

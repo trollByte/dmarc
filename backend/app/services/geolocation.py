@@ -63,7 +63,7 @@ class GeoLocationService:
         if self.reader:
             try:
                 self.reader.close()
-            except:
+            except Exception:
                 pass
 
     # ==================== Single IP Lookup ====================

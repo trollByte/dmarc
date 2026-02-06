@@ -46,7 +46,7 @@ class EmailClient:
             try:
                 self.connection.close()
                 self.connection.logout()
-            except:
+            except Exception:
                 pass
             self.connection = None
 

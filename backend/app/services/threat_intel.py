@@ -258,7 +258,7 @@ class ThreatIntelService:
                     last_reported = datetime.fromisoformat(
                         data["lastReportedAt"].replace("Z", "+00:00")
                     ).replace(tzinfo=None)
-                except:
+                except (ValueError, KeyError):
                     pass
 
             # Cache the result

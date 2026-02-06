@@ -299,16 +299,40 @@ class DNSMonitorService:
 
         return None
 
-    def _check_dkim(self, monitored: MonitoredDomain) -> List[DNSChange]:
-        """Check DKIM records for changes"""
-        changes = []
-        selectors = monitored.dkim_selectors.split(",") if monitored.dkim_selectors else []
+    # Common DKIM selectors to check when none are explicitly configured
+    DEFAULT_DKIM_SELECTORS = ["google", "default", "selector1", "selector2"]
 
+    def _check_dkim(self, monitored: MonitoredDomain) -> List[DNSChange]:
+        """Check DKIM records for changes across all configured selectors."""
+        changes = []
+        selectors = (
+            [s.strip() for s in monitored.dkim_selectors.split(",") if s.strip()]
+            if monitored.dkim_selectors
+            else self.DEFAULT_DKIM_SELECTORS
+        )
+
+        # Build combined DKIM value from all selectors
+        dkim_parts = []
         for selector in selectors:
-            selector = selector.strip()
             record = self._get_txt_record(f"{selector}._domainkey.{monitored.domain}")
-            # DKIM changes would need per-selector tracking
-            # For simplicity, we'll just log if any DKIM is found/missing
+            if record:
+                dkim_parts.append(f"{selector}={record}")
+
+        combined = ";".join(sorted(dkim_parts)) if dkim_parts else None
+        current_hash = self._hash_value(combined) if combined else None
+
+        if current_hash != monitored.last_dkim_hash:
+            old_value = self._get_stored_value(monitored.domain, "dkim")
+            change = self._log_change(
+                monitored.domain,
+                RecordType.DKIM,
+                monitored.last_dkim_hash,
+                current_hash,
+                old_value,
+                combined,
+            )
+            monitored.last_dkim_hash = current_hash
+            changes.append(change)
 
         return changes
 
@@ -326,6 +350,20 @@ class DNSMonitorService:
             records = self._get_mx_records(monitored.domain)
             record_str = ",".join(sorted(records)) if records else None
             monitored.last_mx_hash = self._hash_value(record_str) if record_str else None
+
+        if monitored.monitor_dkim:
+            selectors = (
+                [s.strip() for s in monitored.dkim_selectors.split(",") if s.strip()]
+                if monitored.dkim_selectors
+                else self.DEFAULT_DKIM_SELECTORS
+            )
+            dkim_parts = []
+            for selector in selectors:
+                record = self._get_txt_record(f"{selector}._domainkey.{monitored.domain}")
+                if record:
+                    dkim_parts.append(f"{selector}={record}")
+            combined = ";".join(sorted(dkim_parts)) if dkim_parts else None
+            monitored.last_dkim_hash = self._hash_value(combined) if combined else None
 
         self.db.commit()
 
@@ -386,7 +424,7 @@ class DNSMonitorService:
             for rdata in answers:
                 return rdata.to_text().strip('"')
         except Exception:
-            pass
+            logger.debug("Failed to resolve TXT record for %s", domain)
         return None
 
     def _get_spf_record(self, domain: str) -> Optional[str]:
@@ -398,7 +436,7 @@ class DNSMonitorService:
                 if txt.startswith("v=spf1"):
                     return txt
         except Exception:
-            pass
+            logger.debug("Failed to resolve SPF record for %s", domain)
         return None
 
     def _get_mx_records(self, domain: str) -> List[str]:
@@ -407,7 +445,7 @@ class DNSMonitorService:
             answers = self.resolver.resolve(domain, 'MX')
             return [f"{rdata.preference} {rdata.exchange}" for rdata in answers]
         except Exception:
-            pass
+            logger.debug("Failed to resolve MX records for %s", domain)
         return []
 
     def _hash_value(self, value: str) -> str:

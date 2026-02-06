@@ -55,6 +55,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager for startup and shutdown tasks"""
     # Startup
     logger.info("Starting application...")
+
+    # Validate JWT secret is configured in non-debug mode
+    if not settings.debug and not settings.jwt_secret_key:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set in production. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+        )
+
     start_scheduler()
     logger.info("Background scheduler started")
 

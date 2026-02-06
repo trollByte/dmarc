@@ -13,6 +13,7 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user, require_role
 from app.models import User
 from app.services.threat_intel import ThreatIntelService, ThreatLevel
+from app.services.virustotal_service import VirusTotalService
 from app.schemas.threat_intel_schemas import (
     ThreatInfoResponse,
     ThreatCheckRequest,
@@ -42,12 +43,13 @@ async def check_ip_threat(
     """
     Check threat intelligence for a single IP address.
 
-    Uses AbuseIPDB to get:
+    Uses AbuseIPDB and VirusTotal (if configured) to get:
     - Abuse confidence score (0-100)
     - Number of abuse reports
     - Attack categories
     - ISP and location info
     - Tor exit node detection
+    - VirusTotal malicious/suspicious verdicts
 
     Results are cached for 24 hours.
     """
@@ -59,6 +61,26 @@ async def check_ip_threat(
             status_code=503,
             detail="Threat intelligence service unavailable. Check API key configuration."
         )
+
+    # Supplement with VirusTotal data if configured
+    vt_data = None
+    vt_service = VirusTotalService(db)
+    if vt_service.is_configured:
+        try:
+            vt_data = await vt_service.lookup_ip(ip_address, use_cache=use_cache)
+        except Exception as e:
+            logger.warning(f"VirusTotal lookup failed for {ip_address}: {e}")
+
+    source = result.source
+    if vt_data:
+        source = f"{result.source}+virustotal"
+        # Append VT categories to existing categories
+        if vt_data.malicious_count > 0:
+            if "VirusTotal:malicious" not in result.categories:
+                result.categories.append(f"VirusTotal:malicious({vt_data.malicious_count})")
+        if vt_data.suspicious_count > 0:
+            if "VirusTotal:suspicious" not in result.categories:
+                result.categories.append(f"VirusTotal:suspicious({vt_data.suspicious_count})")
 
     return ThreatInfoResponse(
         ip_address=result.ip_address,
@@ -75,7 +97,7 @@ async def check_ip_threat(
         usage_type=result.usage_type,
         categories=result.categories,
         cached_at=result.cached_at,
-        source=result.source,
+        source=source,
     )
 
 

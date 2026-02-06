@@ -558,9 +558,9 @@ Three role levels with granular permissions:
 ## 🗺️ Future Enhancements
 
 ### High Priority
-1. **LSTM Forecasting** (Optional ML feature)
+1. **Holt-Winters Exponential Smoothing Forecasting** (ML feature)
    - Forecast failure rates 7 days ahead
-   - Requires TensorFlow/Keras
+   - Uses statsmodels Holt-Winters implementation
    - Weekly training on 180 days of data
    - Confidence intervals included
 

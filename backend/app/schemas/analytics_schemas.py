@@ -51,7 +51,7 @@ class CountryHeatmapResponse(BaseModel):
 class MLModelType(str, Enum):
     """ML model types"""
     ISOLATION_FOREST = "isolation_forest"
-    LSTM_FORECAST = "lstm_forecast"
+    HOLT_WINTERS_FORECAST = "holt_winters_forecast"
 
 
 class MLModelSummary(BaseModel):

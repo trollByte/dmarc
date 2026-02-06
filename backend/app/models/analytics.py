@@ -69,7 +69,7 @@ class MLModel(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Model identification
-    model_type = Column(String(50), nullable=False, index=True)  # 'isolation_forest', 'lstm_forecast'
+    model_type = Column(String(50), nullable=False, index=True)  # 'isolation_forest', 'holt_winters_forecast'
     model_name = Column(String(255), nullable=False, index=True)  # 'anomaly_detection_v1'
     version = Column(Integer, nullable=False, default=1)
 

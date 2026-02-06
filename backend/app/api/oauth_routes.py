@@ -22,14 +22,14 @@ from app.database import get_db
 from app.config import get_settings
 from app.services.oauth_service import OAuthService, OAuthProvider, OAuthError
 from app.services.auth_service import AuthService
+from app.services.cache import get_cache
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
 router = APIRouter(prefix="/auth/oauth", tags=["OAuth"])
 
-# In-memory state storage (use Redis in production)
-_oauth_states: dict = {}
+_OAUTH_STATE_TTL = 600  # 10 minutes
 
 
 class OAuthProvidersResponse(BaseModel):
@@ -109,7 +109,8 @@ async def oauth_login(
 
     # Generate state token for CSRF protection
     state = oauth_service.generate_state_token()
-    _oauth_states[state] = redirect_url or ""
+    cache = get_cache()
+    cache.set(f"oauth_state:{state}", redirect_url or "", ttl=_OAUTH_STATE_TTL)
 
     # Get auth URL and redirect
     auth_url = oauth_service.get_auth_url(oauth_provider, state)
@@ -153,13 +154,16 @@ async def oauth_callback(
         )
 
     # Validate state (CSRF protection)
-    if not state or state not in _oauth_states:
+    cache = get_cache()
+    state_key = f"oauth_state:{state}"
+    redirect_url = cache.get(state_key) if state else None
+    if not state or redirect_url is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token"
         )
 
-    redirect_url = _oauth_states.pop(state, None)
+    cache.delete(state_key)
 
     try:
         oauth_provider = OAuthProvider(provider)

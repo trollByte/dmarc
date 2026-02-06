@@ -557,7 +557,7 @@ docker compose exec backend python scripts/create_admin_user.py
 ## Future Roadmap
 
 ### High Priority
-1. **LSTM Forecasting** - Predict failure rates 7 days ahead
+1. **Holt-Winters Forecasting** - Predict failure rates 7 days ahead
 2. **React Frontend** - Modern SPA with real-time updates
 3. **SIEM Integration** - Splunk/ELK/Datadog connectors
 

@@ -70,7 +70,7 @@ class IMAPClient:
                 self.connection.close()
                 self.connection.logout()
                 logger.info("Disconnected from IMAP server")
-            except:
+            except Exception:
                 pass
             self.connection = None
 
@@ -165,7 +165,7 @@ class IMAPClient:
         if date_str:
             try:
                 return email.utils.parsedate_to_datetime(date_str)
-            except:
+            except (ValueError, TypeError):
                 pass
         return datetime.utcnow()
 

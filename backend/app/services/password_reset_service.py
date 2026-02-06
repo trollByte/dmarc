@@ -11,6 +11,9 @@ Handles:
 import secrets
 import hashlib
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
@@ -190,7 +193,7 @@ class PasswordResetService:
         reset_url_base: str
     ) -> bool:
         """
-        Send password reset email.
+        Send password reset email via SMTP.
 
         Args:
             email: Recipient email address
@@ -199,23 +202,59 @@ class PasswordResetService:
 
         Returns:
             True if email was sent (or queued) successfully
-
-        Note:
-            This is a placeholder. In production, integrate with
-            email service (SMTP, SendGrid, AWS SES, etc.)
         """
         reset_url = f"{reset_url_base}?token={reset_token}"
 
-        # TODO: Integrate with actual email service
-        logger.info(f"Password reset email would be sent to: {email}")
-        logger.info(f"Reset URL: {reset_url}")
+        smtp_host = getattr(settings, 'smtp_host', '')
+        smtp_from = getattr(settings, 'smtp_from', '')
 
-        # For now, just log. In production:
-        # - Use SMTP or email API
-        # - Use HTML templates
-        # - Add rate limiting
+        if not smtp_host or not smtp_from:
+            logger.info(f"SMTP not configured, logging reset link for {email}")
+            logger.info(f"Reset URL: {reset_url}")
+            return True
 
-        return True
+        try:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = "Password Reset Request - DMARC Dashboard"
+            msg['From'] = smtp_from
+            msg['To'] = email
+
+            html_body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif;">
+                <h2>Password Reset Request</h2>
+                <p>You requested a password reset for your DMARC Dashboard account.</p>
+                <p>Click the link below to reset your password:</p>
+                <p><a href="{reset_url}" style="background: #3498db; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Reset Password</a></p>
+                <p>Or copy this URL: {reset_url}</p>
+                <p>This link expires in {self.TOKEN_EXPIRY_HOURS} hour(s).</p>
+                <p>If you did not request this reset, please ignore this email.</p>
+                <hr>
+                <p style="color: #999; font-size: 12px;">DMARC Dashboard</p>
+            </body>
+            </html>
+            """
+            msg.attach(MIMEText(html_body, 'html'))
+
+            smtp_port = getattr(settings, 'smtp_port', 587)
+            smtp_user = getattr(settings, 'smtp_user', None)
+            smtp_password = getattr(settings, 'smtp_password', None)
+            use_tls = getattr(settings, 'smtp_use_tls', True)
+
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                if use_tls:
+                    server.starttls()
+                if smtp_user and smtp_password:
+                    server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+
+            logger.info(f"Password reset email sent to {email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to {email}: {e}")
+            logger.info(f"Reset URL (fallback): {reset_url}")
+            return True
 
     def _generate_token(self) -> Tuple[str, str]:
         """
