@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.dependencies.auth import get_current_user, require_role
 from app.services.auth_service import AuthService
 from app.services.saml_service import SAMLService, NameIDFormat
@@ -134,7 +134,7 @@ async def list_providers(
 async def create_provider(
     request: CreateProviderRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Create a new SAML identity provider configuration.
@@ -198,7 +198,7 @@ async def create_provider(
 async def get_provider(
     provider_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Get SAML provider details. Admin only."""
     service = SAMLService(db)
@@ -239,7 +239,7 @@ async def update_provider(
     provider_id: UUID,
     request: UpdateProviderRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Update a SAML provider. Admin only."""
     service = SAMLService(db)
@@ -281,7 +281,7 @@ async def update_provider(
 async def delete_provider(
     provider_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Delete a SAML provider. Admin only."""
     service = SAMLService(db)
@@ -383,10 +383,11 @@ async def assertion_consumer_service(
         # Get user from database to get role
         user = db.query(User).filter(User.id == result["user_id"]).first()
         if user:
+            role = user.role if isinstance(user.role, UserRole) else UserRole(user.role)
             token = AuthService.create_access_token(
                 user_id=str(user.id),
                 username=user.username,
-                role=user.role
+                role=role
             )
 
             # Redirect to frontend with token

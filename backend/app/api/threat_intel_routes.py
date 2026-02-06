@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user, require_role
-from app.models import User
+from app.models import User, UserRole
 from app.services.threat_intel import ThreatIntelService, ThreatLevel
 from app.services.virustotal_service import VirusTotalService
 from app.schemas.threat_intel_schemas import (
@@ -109,7 +109,7 @@ async def check_ip_threat(
 async def check_ips_bulk(
     request: ThreatBulkCheckRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("analyst")),
+    current_user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Check threat intelligence for multiple IP addresses.
@@ -228,7 +228,7 @@ async def get_high_threat_ips(
 )
 async def purge_cache(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Purge expired threat intelligence cache entries.

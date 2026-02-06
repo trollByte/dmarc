@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, RetentionTarget
+from app.models import User, UserRole, RetentionTarget
 from app.dependencies.auth import get_current_user, require_role
 from app.services.retention_service import RetentionService, RetentionError
 from app.schemas.retention_schemas import (
@@ -49,7 +49,7 @@ async def list_policies(
     target: str = Query(None, description="Filter by target type"),
     is_enabled: bool = Query(None, description="Filter by enabled status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     List all retention policies.
@@ -82,7 +82,7 @@ async def list_policies(
 async def create_policy(
     policy_data: RetentionPolicyCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Create a new retention policy.
@@ -130,7 +130,7 @@ async def create_policy(
 async def get_policy(
     policy_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get details of a specific retention policy.
@@ -159,7 +159,7 @@ async def update_policy(
     policy_id: UUID,
     policy_data: RetentionPolicyUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Update an existing retention policy.
@@ -188,7 +188,7 @@ async def update_policy(
 async def delete_policy(
     policy_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Delete a retention policy.
@@ -217,7 +217,7 @@ async def delete_policy(
 async def execute_policy(
     policy_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Execute a specific retention policy immediately.
@@ -249,7 +249,7 @@ async def execute_policy(
 )
 async def execute_all_policies(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Execute all enabled retention policies.
@@ -280,7 +280,7 @@ async def execute_all_policies(
 async def preview_policy(
     policy_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Preview what would be deleted if a policy is executed.
@@ -321,7 +321,7 @@ async def get_logs(
     days: int = Query(30, ge=1, le=365, description="Days to look back"),
     limit: int = Query(100, ge=10, le=500, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get retention policy execution logs.
@@ -342,7 +342,7 @@ async def get_logs(
 )
 async def get_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get retention statistics.
@@ -368,7 +368,7 @@ async def get_stats(
 )
 async def init_default_policies(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Create default retention policies if none exist.

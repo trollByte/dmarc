@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User, AuditLog, AuditAction, AuditCategory
+from app.models import User, UserRole, AuditLog, AuditAction, AuditCategory
 from app.dependencies.auth import get_current_user, require_role
 from app.services.audit_service import AuditService
 from app.schemas.audit_schemas import (
@@ -50,7 +50,7 @@ async def list_audit_logs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=10, le=200, description="Results per page"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     List audit logs with filtering and pagination.
@@ -110,7 +110,7 @@ async def list_audit_logs(
 async def get_audit_log_detail(
     log_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get detailed information about a specific audit log entry.
@@ -139,7 +139,7 @@ async def get_audit_log_detail(
 async def get_audit_stats(
     days: int = Query(30, ge=1, le=365, description="Days to analyze"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get audit log statistics.
@@ -168,7 +168,7 @@ async def get_security_events(
     days: int = Query(7, ge=1, le=90, description="Days to look back"),
     limit: int = Query(100, ge=10, le=500, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get security-related audit events.
@@ -198,7 +198,7 @@ async def get_user_activity(
     days: int = Query(30, ge=1, le=365, description="Days to look back"),
     limit: int = Query(50, ge=10, le=200, description="Maximum results"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Get activity history for a specific user.

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.dependencies.auth import get_current_user, require_role
 from app.services.bimi_service import BIMIService, BIMIStatus
 
@@ -163,7 +163,7 @@ async def list_domains(
 async def add_domain(
     request: AddDomainRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Add a domain to BIMI monitoring.
@@ -204,7 +204,7 @@ async def add_domain(
 async def remove_domain(
     domain: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Remove a domain from BIMI monitoring. Admin only."""
     service = BIMIService(db)
@@ -286,7 +286,7 @@ async def check_domain(
 )
 async def check_all_domains(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Check all monitored domains for BIMI status.

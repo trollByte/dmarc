@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.dependencies.auth import get_current_user, require_role
 from app.services.webhook_service import WebhookService, WebhookEvent
 
@@ -93,7 +93,7 @@ class WebhookSecretResponse(BaseModel):
 )
 async def list_endpoints(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """List all configured webhook endpoints. Admin only."""
     service = WebhookService(db)
@@ -125,7 +125,7 @@ async def list_endpoints(
 async def create_endpoint(
     endpoint_data: WebhookEndpointCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Create a new webhook endpoint. Admin only.
@@ -191,7 +191,7 @@ async def list_events(
 async def get_endpoint(
     endpoint_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Get webhook endpoint details. Admin only."""
     service = WebhookService(db)
@@ -227,7 +227,7 @@ async def update_endpoint(
     endpoint_id: UUID,
     endpoint_data: WebhookEndpointUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Update a webhook endpoint. Admin only."""
     service = WebhookService(db)
@@ -263,7 +263,7 @@ async def update_endpoint(
 async def delete_endpoint(
     endpoint_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Delete a webhook endpoint. Admin only."""
     service = WebhookService(db)
@@ -284,7 +284,7 @@ async def delete_endpoint(
 async def test_endpoint(
     endpoint_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Send a test webhook. Admin only."""
     service = WebhookService(db)
@@ -321,7 +321,7 @@ async def get_deliveries(
     endpoint_id: UUID,
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """Get webhook delivery history. Admin only."""
     service = WebhookService(db)

@@ -13,7 +13,7 @@ from sqlalchemy import func
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models import User, DmarcReport as Report, DmarcRecord as Record, AlertHistory as Alert
+from app.models import User, DmarcReport as Report, DmarcRecord as Record, AlertHistory as Alert, GeoLocationCache
 from app.services.policy_advisor import PolicyAdvisor
 from app.services.threat_intel import ThreatIntelService, ThreatLevel
 
@@ -58,7 +58,7 @@ async def get_dashboard_summary(
             )
         ).label("spf_pass"),
     ).join(Report).filter(
-        Report.date_range_begin >= cutoff_date
+        Report.date_begin >= cutoff_date
     ).first()
 
     total_emails = current_stats.total or 0
@@ -70,7 +70,7 @@ async def get_dashboard_summary(
     pass_stats = db.query(
         func.sum(Record.count).label("passed")
     ).join(Report).filter(
-        Report.date_range_begin >= cutoff_date,
+        Report.date_begin >= cutoff_date,
         Record.disposition == "none"  # none = delivered (pass)
     ).first()
 
@@ -82,8 +82,8 @@ async def get_dashboard_summary(
     prev_stats = db.query(
         func.sum(Record.count).label("total")
     ).join(Report).filter(
-        Report.date_range_begin >= prev_cutoff,
-        Report.date_range_begin < cutoff_date
+        Report.date_begin >= prev_cutoff,
+        Report.date_begin < cutoff_date
     ).first()
 
     prev_total = prev_stats.total or 0
@@ -91,7 +91,7 @@ async def get_dashboard_summary(
 
     # --- Domain Stats ---
     domain_count = db.query(func.count(func.distinct(Report.domain))).filter(
-        Report.date_range_begin >= cutoff_date
+        Report.date_begin >= cutoff_date
     ).scalar() or 0
 
     # --- Alert Stats ---
@@ -205,7 +205,7 @@ async def get_volume_chart(
 
     # Get daily aggregates
     daily_stats = db.query(
-        func.date(Report.date_range_begin).label("date"),
+        func.date(Report.date_begin).label("date"),
         func.sum(Record.count).label("total"),
         func.sum(
             func.case(
@@ -214,11 +214,11 @@ async def get_volume_chart(
             )
         ).label("passed"),
     ).join(Record).filter(
-        Report.date_range_begin >= cutoff_date
+        Report.date_begin >= cutoff_date
     ).group_by(
-        func.date(Report.date_range_begin)
+        func.date(Report.date_begin)
     ).order_by(
-        func.date(Report.date_range_begin)
+        func.date(Report.date_begin)
     ).all()
 
     data_points = []
@@ -252,7 +252,7 @@ async def get_auth_chart(
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     daily_auth = db.query(
-        func.date(Report.date_range_begin).label("date"),
+        func.date(Report.date_begin).label("date"),
         func.sum(Record.count).label("total"),
         func.sum(
             func.case(
@@ -267,11 +267,11 @@ async def get_auth_chart(
             )
         ).label("spf_pass"),
     ).join(Record).filter(
-        Report.date_range_begin >= cutoff_date
+        Report.date_begin >= cutoff_date
     ).group_by(
-        func.date(Report.date_range_begin)
+        func.date(Report.date_begin)
     ).order_by(
-        func.date(Report.date_range_begin)
+        func.date(Report.date_begin)
     ).all()
 
     data_points = []
@@ -311,7 +311,7 @@ async def get_top_senders(
             )
         ).label("passed"),
     ).join(Report).filter(
-        Report.date_range_begin >= cutoff_date
+        Report.date_begin >= cutoff_date
     ).group_by(
         Record.source_ip
     ).order_by(
@@ -346,20 +346,22 @@ async def get_geo_distribution(
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     geo_stats = db.query(
-        Record.country,
+        GeoLocationCache.country_code,
         func.sum(Record.count).label("total"),
+    ).join(
+        GeoLocationCache, Record.source_ip == GeoLocationCache.ip_address
     ).join(Report).filter(
-        Report.date_range_begin >= cutoff_date,
-        Record.country.isnot(None)
+        Report.date_begin >= cutoff_date,
+        GeoLocationCache.country_code.isnot(None)
     ).group_by(
-        Record.country
+        GeoLocationCache.country_code
     ).order_by(
         func.sum(Record.count).desc()
     ).limit(20).all()
 
     countries = [
         {
-            "country_code": row.country,
+            "country_code": row.country_code,
             "total_emails": row.total or 0,
         }
         for row in geo_stats
@@ -407,7 +409,7 @@ async def get_auth_analysis(
     cutoff_date = datetime.utcnow() - timedelta(days=days)
 
     # Base query filter
-    base_filter = [Report.date_range_begin >= cutoff_date]
+    base_filter = [Report.date_begin >= cutoff_date]
     if domain:
         base_filter.append(Report.domain == domain)
 

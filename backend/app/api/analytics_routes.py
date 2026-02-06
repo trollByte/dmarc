@@ -17,7 +17,7 @@ from pydantic import UUID4
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user, require_role
-from app.models import User, DmarcRecord
+from app.models import User, UserRole, DmarcRecord
 from app.services.geolocation import GeoLocationService
 from app.services.ml_analytics import MLAnalyticsService
 from app.schemas.analytics_schemas import (
@@ -237,7 +237,7 @@ async def train_model(
     request: TrainModelRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Train a new ML model.
@@ -282,7 +282,7 @@ async def train_model(
 async def deploy_model(
     request: DeployModelRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(require_role(UserRole.ADMIN)),
 ):
     """
     Deploy a trained ML model for production use.
@@ -368,7 +368,7 @@ async def detect_anomalies(
 async def detect_anomalies_with_alerts(
     request: DetectAnomaliesWithAlertsRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("analyst")),
+    current_user: User = Depends(require_role(UserRole.ANALYST)),
 ):
     """
     Run anomaly detection and automatically create alerts for detected anomalies.

@@ -169,10 +169,11 @@ class AuthService:
         Returns:
             Tuple of (access_token, refresh_token)
         """
+        role = user.role if isinstance(user.role, UserRole) else UserRole(user.role)
         access_token = AuthService.create_access_token(
             str(user.id),
             user.username,
-            user.role
+            role
         )
         refresh_token = AuthService.create_refresh_token(str(user.id))
         return access_token, refresh_token
