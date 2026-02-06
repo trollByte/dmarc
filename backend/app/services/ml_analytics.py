@@ -19,7 +19,7 @@ import pandas as pd
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, case
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 import joblib
@@ -300,7 +300,7 @@ class MLAnalyticsService:
             func.count(DmarcRecord.id).label("volume"),
             func.sum(DmarcRecord.count).label("total_count"),
             func.sum(
-                func.case(
+                case(
                     (and_(DmarcRecord.dkim != "pass", DmarcRecord.spf != "pass"), DmarcRecord.count),
                     else_=0
                 )

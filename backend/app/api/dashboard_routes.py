@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
@@ -46,13 +46,13 @@ async def get_dashboard_summary(
     current_stats = db.query(
         func.sum(Record.count).label("total"),
         func.sum(
-            func.case(
+            case(
                 (Record.dkim_result == "pass", Record.count),
                 else_=0
             )
         ).label("dkim_pass"),
         func.sum(
-            func.case(
+            case(
                 (Record.spf_result == "pass", Record.count),
                 else_=0
             )
@@ -208,7 +208,7 @@ async def get_volume_chart(
         func.date(Report.date_begin).label("date"),
         func.sum(Record.count).label("total"),
         func.sum(
-            func.case(
+            case(
                 (Record.disposition == "none", Record.count),
                 else_=0
             )
@@ -255,13 +255,13 @@ async def get_auth_chart(
         func.date(Report.date_begin).label("date"),
         func.sum(Record.count).label("total"),
         func.sum(
-            func.case(
+            case(
                 (Record.dkim_result == "pass", Record.count),
                 else_=0
             )
         ).label("dkim_pass"),
         func.sum(
-            func.case(
+            case(
                 (Record.spf_result == "pass", Record.count),
                 else_=0
             )
@@ -305,7 +305,7 @@ async def get_top_senders(
         Record.source_ip,
         func.sum(Record.count).label("total"),
         func.sum(
-            func.case(
+            case(
                 (Record.disposition == "none", Record.count),
                 else_=0
             )

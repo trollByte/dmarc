@@ -23,7 +23,7 @@ class AlertHistoryResponse(BaseModel):
     domain: Optional[str]
     current_value: Optional[float]
     threshold_value: Optional[float]
-    metadata: Optional[Dict[str, Any]]
+    alert_metadata: Optional[Dict[str, Any]]
     status: AlertStatus
     created_at: datetime
     acknowledged_at: Optional[datetime]

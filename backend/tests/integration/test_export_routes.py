@@ -135,7 +135,7 @@ class TestCSVExport:
 
     def test_export_requires_auth(self, client):
         """Export endpoints require authentication."""
-        response = client.get("/api/export/reports/csv")
+        response = client.get("/api/export/alerts/csv")
         assert response.status_code == 401
 
 

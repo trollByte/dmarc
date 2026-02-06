@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.config import get_settings
 from app.services.auth_service import AuthService
 from app.services.password_reset_service import PasswordResetService, PasswordResetError
@@ -184,10 +184,11 @@ async def refresh_token(
         )
 
     # Create new access token
+    role = user.role if isinstance(user.role, UserRole) else UserRole(user.role)
     access_token = AuthService.create_access_token(
         str(user.id),
         user.username,
-        user.role
+        role
     )
 
     return AccessTokenResponse(

@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
@@ -231,13 +231,13 @@ class ExportService:
             writer.writerow([
                 rec.domain,
                 rec.priority,
-                rec.category,
-                rec.recommendation,
+                rec.type.value if hasattr(rec.type, 'value') else rec.type,
+                rec.recommended_action,
                 rec.impact,
-                rec.current_policy or '',
-                rec.recommended_policy or '',
-                f"{rec.pass_rate:.1f}" if rec.pass_rate else '',
-                rec.health_score or '',
+                rec.current_state.get('policy', ''),
+                '',
+                f"{rec.current_state.get('pass_rate', 0) * 100:.1f}" if rec.current_state.get('pass_rate') else '',
+                '',
             ])
 
         return output.getvalue()
@@ -372,7 +372,7 @@ class ExportService:
         if recommendations:
             for rec in recommendations:
                 story.append(Paragraph(
-                    f"<b>{rec.domain}</b> - {rec.recommendation}",
+                    f"<b>{rec.domain}</b> - {rec.recommended_action}",
                     self.styles['Normal']
                 ))
                 story.append(Paragraph(
@@ -408,6 +408,12 @@ class ExportService:
         ))
         story.append(Spacer(1, 30))
 
+        if not health:
+            story.append(Paragraph("No data available for this domain.", self.styles['Normal']))
+            doc.build(story)
+            buffer.seek(0)
+            return buffer.getvalue()
+
         # Health Score
         grade_colors = {
             'A': '#22c55e', 'B': '#84cc16', 'C': '#eab308',
@@ -415,10 +421,13 @@ class ExportService:
         }
         grade_color = grade_colors.get(health.grade, '#6b7280')
 
+        def _grade_to_status(grade):
+            return {'A': 'Excellent', 'B': 'Good', 'C': 'Fair', 'D': 'Poor', 'F': 'Critical'}.get(grade, 'Unknown')
+
         story.append(Paragraph("Health Score", self.styles['SectionHeader']))
         score_data = [
             ['Score', 'Grade', 'Status'],
-            [f"{health.score}/100", health.grade, health.status.replace('_', ' ').title()]
+            [f"{health.overall_score}/100", health.grade, _grade_to_status(health.grade)]
         ]
         score_table = Table(score_data, colWidths=[2*inch, 1.5*inch, 2*inch])
         score_table.setStyle(TableStyle([
@@ -438,11 +447,11 @@ class ExportService:
         metrics_data = [
             ['Metric', 'Value'],
             ['Total Emails', f"{health.total_emails:,}"],
-            ['DMARC Pass Rate', f"{health.dmarc_pass_rate:.1f}%"],
-            ['DKIM Pass Rate', f"{health.dkim_pass_rate:.1f}%"],
-            ['SPF Pass Rate', f"{health.spf_pass_rate:.1f}%"],
-            ['Current Policy', health.policy or 'Not set'],
-            ['Unique Sources', f"{health.unique_sources:,}"],
+            ['DMARC Pass Rate', f"{health.pass_rate * 100:.1f}%"],
+            ['DKIM Pass Rate', f"{health.dkim_alignment_rate * 100:.1f}%"],
+            ['SPF Pass Rate', f"{health.spf_alignment_rate * 100:.1f}%"],
+            ['Current Policy', health.current_policy or 'Not set'],
+            ['Unique Sources', f"{health.total_sources:,}"],
         ]
         metrics_table = Table(metrics_data, colWidths=[3*inch, 2.5*inch])
         metrics_table.setStyle(TableStyle([
@@ -466,11 +475,12 @@ class ExportService:
         story.append(Paragraph("Recommendations", self.styles['SectionHeader']))
         rec = advisor.get_policy_recommendation(domain, days)
         if rec:
-            story.append(Paragraph(f"<b>{rec.recommendation}</b>", self.styles['Normal']))
+            story.append(Paragraph(f"<b>{rec.recommended_action}</b>", self.styles['Normal']))
             story.append(Paragraph(f"Priority: {rec.priority} | Impact: {rec.impact}", self.styles['Normal']))
-            if rec.current_policy and rec.recommended_policy:
+            current_policy = rec.current_state.get('policy', '')
+            if current_policy and health.recommended_policy:
                 story.append(Paragraph(
-                    f"Current: {rec.current_policy} → Recommended: {rec.recommended_policy}",
+                    f"Current: {current_policy} &rarr; Recommended: {health.recommended_policy}",
                     self.styles['Normal']
                 ))
         else:
@@ -529,7 +539,7 @@ class ExportService:
             DmarcReport.p,
             func.sum(DmarcRecord.count).label('total'),
             func.sum(
-                func.case(
+                case(
                     (DmarcRecord.disposition == 'none', DmarcRecord.count),
                     else_=0
                 )

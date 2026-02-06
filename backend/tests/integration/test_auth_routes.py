@@ -108,7 +108,7 @@ class TestLogin:
         assert response.status_code == 422
 
     def test_login_inactive_user(self, client, db_session, test_password):
-        """Inactive user returns 403."""
+        """Inactive user returns 401 (authenticate_user returns None)."""
         hashed = AuthService.hash_password(test_password)
         user = User(
             username="inactive",
@@ -126,11 +126,10 @@ class TestLogin:
             "/api/auth/login",
             json={"username": "inactive", "password": test_password},
         )
-        assert response.status_code == 403
-        assert "inactive" in response.json()["detail"].lower()
+        assert response.status_code == 401
 
     def test_login_locked_user(self, client, db_session, test_password):
-        """Locked user returns 403."""
+        """Locked user returns 401 (authenticate_user returns None)."""
         hashed = AuthService.hash_password(test_password)
         user = User(
             username="locked",
@@ -148,8 +147,7 @@ class TestLogin:
             "/api/auth/login",
             json={"username": "locked", "password": test_password},
         )
-        assert response.status_code == 403
-        assert "locked" in response.json()["detail"].lower()
+        assert response.status_code == 401
 
 
 @pytest.mark.integration

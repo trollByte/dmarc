@@ -156,7 +156,7 @@ class EnhancedAlertService:
             raise ValueError(f"Alert {alert_id} not found")
 
         if alert.status != AlertStatus.CREATED:
-            raise ValueError(f"Alert already {alert.status.value}")
+            raise ValueError(f"Alert already {alert.status}")
 
         alert.status = AlertStatus.ACKNOWLEDGED
         alert.acknowledged_at = datetime.utcnow()
@@ -167,7 +167,7 @@ class EnhancedAlertService:
         self.db.refresh(alert)
 
         logger.info(
-            f"Alert acknowledged: {alert.alert_type.value}",
+            f"Alert acknowledged: {alert.alert_type}",
             extra={"alert_id": str(alert.id), "user_id": user_id}
         )
 
@@ -209,7 +209,7 @@ class EnhancedAlertService:
         self.db.refresh(alert)
 
         logger.info(
-            f"Alert resolved: {alert.alert_type.value}",
+            f"Alert resolved: {alert.alert_type}",
             extra={"alert_id": str(alert.id), "user_id": user_id}
         )
 
@@ -401,7 +401,7 @@ class EnhancedAlertService:
             return None
 
         conditions = rule.conditions
-        threshold = conditions.get(config["condition_key"], {}).get(rule.severity.value)
+        threshold = conditions.get(config["condition_key"], {}).get(rule.severity)
         if not threshold:
             return None
 
@@ -411,7 +411,7 @@ class EnhancedAlertService:
         return self.create_alert(
             alert_type=rule.alert_type,
             severity=rule.severity,
-            title=f"{rule.severity.value.upper()}: {config['title']} for {domain}",
+            title=f"{rule.severity.upper()}: {config['title']} for {domain}",
             message=config["message"](metric_value, threshold),
             domain=domain,
             current_value=metric_value,
@@ -504,7 +504,7 @@ class EnhancedAlertService:
                 teams_sent = self.notification_service.send_teams_alert(
                     alert.title,
                     alert.message,
-                    alert.severity.value,
+                    alert.severity,
                     alert.domain,
                     metadata=alert.alert_metadata
                 )
@@ -516,7 +516,7 @@ class EnhancedAlertService:
                 email_sent = self.notification_service.send_email_alert(
                     alert.title,
                     alert.message,
-                    alert.severity.value,
+                    alert.severity,
                     alert.domain
                 )
                 if email_sent:
