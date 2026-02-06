@@ -21,43 +21,46 @@ depends_on = None
 def upgrade() -> None:
     """Create user notifications table"""
 
-    # Create notification type enum
-    op.execute("""
-        CREATE TYPE notification_type AS ENUM (
-            'info', 'success', 'warning', 'error', 'alert'
-        )
-    """)
-
-    # Create notification category enum
-    op.execute("""
-        CREATE TYPE notification_category AS ENUM (
-            'system', 'report', 'alert', 'security', 'policy'
-        )
-    """)
-
     # User notifications table
-    op.create_table(
-        'user_notifications',
-        sa.Column('id', UUID(as_uuid=True), primary_key=True),
-        sa.Column('user_id', UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
-        sa.Column('title', sa.String(255), nullable=False),
-        sa.Column('message', sa.Text(), nullable=False),
-        sa.Column('notification_type', sa.Enum('info', 'success', 'warning', 'error', 'alert', name='notification_type'), default='info', nullable=False),
-        sa.Column('category', sa.Enum('system', 'report', 'alert', 'security', 'policy', name='notification_category'), default='system', nullable=False),
-        sa.Column('link', sa.String(500), nullable=True),
-        sa.Column('link_text', sa.String(100), nullable=True),
-        sa.Column('is_read', sa.Boolean(), default=False, nullable=False, index=True),
-        sa.Column('read_at', sa.DateTime(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False, index=True),
-        sa.Column('expires_at', sa.DateTime(), nullable=True),
-    )
+    # Use raw SQL to avoid SQLAlchemy enum creation conflicts with model metadata
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE notification_type AS ENUM (
+                'info', 'success', 'warning', 'error', 'alert'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE notification_category AS ENUM (
+                'system', 'report', 'alert', 'security', 'policy'
+            );
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+    """)
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS user_notifications (
+            id UUID PRIMARY KEY,
+            user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            notification_type notification_type NOT NULL DEFAULT 'info',
+            category notification_category NOT NULL DEFAULT 'system',
+            link VARCHAR(500),
+            link_text VARCHAR(100),
+            is_read BOOLEAN NOT NULL DEFAULT FALSE,
+            read_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMP
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_user_notifications_user_id ON user_notifications(user_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_user_notifications_is_read ON user_notifications(is_read)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_user_notifications_created_at ON user_notifications(created_at)")
 
     # Create compound index for efficient queries
-    op.create_index(
-        'ix_user_notifications_user_unread',
-        'user_notifications',
-        ['user_id', 'is_read', 'created_at']
-    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_user_notifications_user_unread ON user_notifications(user_id, is_read, created_at)")
 
 
 def downgrade() -> None:
