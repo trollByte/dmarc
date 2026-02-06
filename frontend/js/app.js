@@ -2,6 +2,12 @@
 const API_BASE = '/api';
 
 // ==========================================
+// SHARED NAMESPACE
+// ==========================================
+
+window.DMARC = window.DMARC || {};
+
+// ==========================================
 // AUTHENTICATION
 // ==========================================
 
@@ -76,13 +82,8 @@ async function login(username, password) {
 
         hideLoginOverlay();
         updateUserMenu();
-
-        // Load dashboard now that we are authenticated
-        await loadDashboard();
-        await loadComparisonData();
-        renderStatCardSparklines();
-        renderPeriodComparisons();
-        startSmartRefresh();
+        updateSidebarUser();
+        initSidebarAndRouter();
     } catch (err) {
         if (errorEl) {
             errorEl.textContent = err.message;
@@ -162,6 +163,7 @@ async function logout() {
     currentUser = null;
     showLoginOverlay();
     updateUserMenu();
+    resetSidebarAndRouter();
 
     // Clear login form
     const usernameInput = document.getElementById('loginUsername');
@@ -245,6 +247,141 @@ function setupAuthEventListeners() {
             userMenuTrigger.setAttribute('aria-expanded', 'false');
         });
     }
+}
+
+// ==========================================
+// SIDEBAR & ROUTER MANAGEMENT
+// ==========================================
+
+/**
+ * Initialize sidebar event handlers and start the router after login.
+ * Registers the dashboard page module, shows admin section if applicable,
+ * and navigates to the current hash or default page.
+ */
+function initSidebarAndRouter() {
+    var Router = window.DMARC.Router;
+    if (!Router) return;
+
+    // Register dashboard module if available
+    if (window.DMARC.DashboardPage) {
+        Router.register('dashboard', window.DMARC.DashboardPage);
+    }
+
+    // Show admin section if user is admin
+    var adminSection = document.getElementById('sidebarAdminSection');
+    if (adminSection) {
+        if (currentUser && currentUser.role === 'admin') {
+            adminSection.classList.add('visible');
+        } else {
+            adminSection.classList.remove('visible');
+        }
+    }
+
+    // Initialize router (navigates to current hash or default)
+    Router.init();
+}
+
+/**
+ * Reset sidebar and router state on logout.
+ */
+function resetSidebarAndRouter() {
+    var Router = window.DMARC.Router;
+    if (Router) {
+        Router.reset();
+    }
+
+    // Hide admin section
+    var adminSection = document.getElementById('sidebarAdminSection');
+    if (adminSection) {
+        adminSection.classList.remove('visible');
+    }
+
+    // Clear sidebar user info
+    var nameEl = document.getElementById('sidebarUserName');
+    var roleEl = document.getElementById('sidebarUserRole');
+    if (nameEl) nameEl.textContent = '';
+    if (roleEl) roleEl.textContent = '';
+
+    // Collapse sidebar on mobile
+    var appLayout = document.getElementById('dashboardContainer');
+    if (appLayout) appLayout.classList.remove('sidebar-mobile-open');
+}
+
+/**
+ * Update sidebar footer with current user information.
+ */
+function updateSidebarUser() {
+    var nameEl = document.getElementById('sidebarUserName');
+    var roleEl = document.getElementById('sidebarUserRole');
+    if (currentUser) {
+        if (nameEl) nameEl.textContent = currentUser.username || '';
+        if (roleEl) roleEl.textContent = currentUser.role || '';
+    }
+}
+
+/**
+ * Set up sidebar UI interactions: collapse toggle, nav clicks, mobile toggle.
+ * Called once during DOMContentLoaded.
+ */
+function setupSidebar() {
+    var appLayout = document.getElementById('dashboardContainer');
+    var sidebar = document.getElementById('sidebar');
+    var toggleBtn = document.getElementById('sidebarToggle');
+    var mobileToggle = document.getElementById('sidebarMobileToggle');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    // Sidebar collapse toggle (class goes on app-layout parent)
+    if (toggleBtn && appLayout) {
+        toggleBtn.addEventListener('click', function() {
+            appLayout.classList.toggle('sidebar-collapsed');
+            var isCollapsed = appLayout.classList.contains('sidebar-collapsed');
+            toggleBtn.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+            toggleBtn.setAttribute('title', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+            try {
+                localStorage.setItem('dmarc-sidebar-collapsed', isCollapsed ? '1' : '0');
+            } catch (e) {
+                // localStorage not available
+            }
+        });
+
+        // Restore collapsed state from localStorage
+        try {
+            if (localStorage.getItem('dmarc-sidebar-collapsed') === '1') {
+                appLayout.classList.add('sidebar-collapsed');
+                toggleBtn.setAttribute('aria-label', 'Expand sidebar');
+                toggleBtn.setAttribute('title', 'Expand sidebar');
+            }
+        } catch (e) {
+            // localStorage not available
+        }
+    }
+
+    // Mobile sidebar toggle (hamburger menu)
+    if (mobileToggle && appLayout) {
+        mobileToggle.addEventListener('click', function() {
+            appLayout.classList.toggle('sidebar-mobile-open');
+        });
+    }
+
+    // Close mobile sidebar when overlay is clicked
+    if (overlay && appLayout) {
+        overlay.addEventListener('click', function() {
+            appLayout.classList.remove('sidebar-mobile-open');
+        });
+    }
+
+    // Sidebar navigation item clicks
+    var navItems = document.querySelectorAll('.sidebar-item[data-page]');
+    navItems.forEach(function(item) {
+        item.addEventListener('click', function() {
+            var pageName = item.getAttribute('data-page');
+            if (pageName && window.DMARC.Router) {
+                window.DMARC.Router.navigate(pageName);
+            }
+            // Close mobile sidebar after navigation
+            if (appLayout) appLayout.classList.remove('sidebar-mobile-open');
+        });
+    });
 }
 
 // Chart instances
@@ -1420,6 +1557,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Set up visibility handler for smart refresh
     setupVisibilityHandler();
+
+    // Set up sidebar interactions (collapse, nav clicks, mobile toggle)
+    setupSidebar();
+
+    // Export shared state and utility functions onto window.DMARC namespace
+    // These are used by page modules loaded after app.js
+    Object.defineProperty(window.DMARC, 'currentUser', {
+        get: function() { return currentUser; },
+        configurable: true
+    });
+    Object.defineProperty(window.DMARC, 'accessToken', {
+        get: function() { return accessToken; },
+        configurable: true
+    });
+    window.DMARC.getAuthHeaders = getAuthHeaders;
+    window.DMARC.showNotification = showNotification;
+    window.DMARC.buildQueryString = buildQueryString;
+    window.DMARC.apiFetch = function(url, options) {
+        return fetch(url, options);
+    };
 
     // Show login overlay by default - dashboard loads after successful login
     showLoginOverlay();
