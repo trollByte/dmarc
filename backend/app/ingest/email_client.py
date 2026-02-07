@@ -1,8 +1,11 @@
 import imaplib
 import email
+import logging
 from email.message import Message
 from typing import List, Tuple, Optional
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class EmailClient:
@@ -46,8 +49,8 @@ class EmailClient:
             try:
                 self.connection.close()
                 self.connection.logout()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("IMAP logout error: %s", e)
             self.connection = None
 
     def search_dmarc_reports(self, limit: int = 50) -> List[str]:

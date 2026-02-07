@@ -10,6 +10,7 @@ DNS record: _smtp._tls.domain TXT "v=TLSRPTv1; rua=mailto:reports@domain"
 
 import json
 import gzip
+import zlib
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
@@ -165,8 +166,8 @@ class TLSRPTService:
         try:
             if data[:2] == b'\x1f\x8b':  # Gzip magic number
                 data = gzip.decompress(data)
-        except Exception:
-            logger.debug("Failed to decompress gzipped TLS-RPT data, trying as raw JSON")
+        except (zlib.error, OSError) as e:
+            logger.debug("Failed to decompress gzipped TLS-RPT data, trying as raw JSON: %s", e)
 
         # Parse JSON
         try:

@@ -41,5 +41,5 @@ def check_db_connection() -> bool:
             connection.execute(text("SELECT 1"))
         return True
     except Exception as e:
-        logger.warning("Database connection check failed: %s", e)
+        logger.error("Database connection check failed: %s", e)
         return False

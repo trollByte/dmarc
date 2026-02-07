@@ -445,14 +445,19 @@ class SAMLService:
         user = self.db.query(User).filter(User.email == email).first()
 
         if not user and provider.auto_provision_users:
-            # Create new user
+            # Create new user - derive username from email prefix
+            username = email.split("@")[0]
+            # Ensure unique username by appending suffix if needed
+            existing = self.db.query(User).filter(User.username == username).first()
+            if existing:
+                import secrets
+                username = f"{username}_{secrets.token_hex(4)}"
             user = User(
+                username=username,
                 email=email,
-                full_name=f"{attributes.get('first_name', '')} {attributes.get('last_name', '')}".strip(),
+                hashed_password="!saml-sso-user",  # SSO users don't use password auth
                 role=provider.default_role,
                 is_active=True,
-                sso_provider="saml",
-                sso_provider_id=str(provider.id),
             )
             self.db.add(user)
 

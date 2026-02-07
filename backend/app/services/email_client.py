@@ -70,8 +70,8 @@ class IMAPClient:
                 self.connection.close()
                 self.connection.logout()
                 logger.info("Disconnected from IMAP server")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("IMAP close error: %s", e)
             self.connection = None
 
     def search_messages(self, criteria: str = 'ALL', limit: int = 100) -> List[bytes]:

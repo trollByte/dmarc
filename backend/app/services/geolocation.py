@@ -63,8 +63,8 @@ class GeoLocationService:
         if self.reader:
             try:
                 self.reader.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("MaxMind close error: %s", e)
 
     # ==================== Single IP Lookup ====================
 

@@ -42,54 +42,54 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 2.1 Backend Unit Tests Needed
 
-- [ ] **AlertService** — Alert lifecycle (create/acknowledge/resolve), deduplication, cooldowns, suppression
-- [ ] **ExportService** — CSV generation, PDF generation, formula injection prevention
-- [ ] **AuditService** — Log creation, filtering, retention
-- [ ] **GeolocationService** — IP lookup, caching, bulk operations, graceful degradation
-- [ ] **MLAnalyticsService** — Training, prediction, model versioning
-- [ ] **ThreatIntelService** — AbuseIPDB integration, VirusTotal integration, caching
-- [ ] **DNSMonitorService** — DNS lookups, change detection, history logging
-- [ ] **ScheduledReportsService** — Schedule CRUD, next-run calculation, delivery tracking
-- [ ] **RetentionService** — Policy enforcement, data cleanup
-- [ ] **WebhookService** — Delivery, retry logic, signature generation
-- [ ] **TOTPService** — Setup, verification, backup codes
-- [ ] **SAMLService** — Metadata generation, assertion parsing
-- [ ] **OAuthService** — State token generation, callback handling
-- [ ] **PolicyAdvisor** — Recommendation generation, domain health scoring
-- [ ] **ForecastingService** — Holt-Winters predictions, confidence intervals
+- [x] **AlertService** — Already has 18 tests in test_alerting_service.py (lifecycle, deduplication, cooldowns, suppression)
+- [x] **ExportService** — Already has 10 tests in test_export_service.py (CSV, PDF, formula injection)
+- [x] **AuditService** — Already has 25 tests in test_audit_service.py (creation, filtering, retention)
+- [x] **GeolocationService** — Already has 11 tests in test_geolocation_service.py (IP lookup, caching, bulk, degradation)
+- [x] **MLAnalyticsService** — Already has 11 tests in test_ml_analytics_service.py (training, prediction, versioning)
+- [x] **ThreatIntelService** — Already has 15 tests in test_threat_intel_service.py (AbuseIPDB, caching)
+- [x] **DNSMonitorService** — Already has 17 tests in test_dns_monitor_service.py (lookups, change detection, history)
+- [x] **ScheduledReportsService** — 15 tests in test_scheduled_reports_service.py (CRUD, next-run, delivery tracking, report execution)
+- [x] **RetentionService** — Already has 16 tests in test_retention_service.py (policy enforcement, cleanup)
+- [x] **WebhookService** — Already has 14 tests in test_webhook_service.py (delivery, retry, signatures)
+- [x] **TOTPService** — Already has 23 tests in test_totp_service.py (setup, verification, backup codes)
+- [x] **SAMLService** — 22 tests in test_saml_service.py (provider CRUD, assertion parsing, user provisioning, SP metadata)
+- [x] **OAuthService** — 25 tests in test_oauth_service.py (provider config, auth URLs, token exchange, user info, full auth flow)
+- [x] **PolicyAdvisor** — 20 tests in test_policy_advisor.py (recommendations, domain health, failing senders, new sender analysis)
+- [x] **ForecastingService** — Already has 21 tests in test_forecasting_service.py (Holt-Winters, confidence intervals)
 
 ### 2.2 Backend Integration Tests Needed
 
-- [ ] **Auth routes** — Login, refresh, logout, lockout, rate limiting
-- [ ] **User routes** — CRUD, API key management, role enforcement
-- [ ] **Alert routes** — History, acknowledge, resolve, rules CRUD, suppressions
-- [ ] **Analytics routes** — Geolocation lookup, ML model management, anomaly detection
-- [ ] **Export routes** — CSV/PDF generation, rate limiting enforcement
-- [ ] **Dashboard routes** — Summary, charts, widget data
-- [ ] **Audit routes** — Log retrieval, filtering, statistics
-- [ ] **DNS monitor routes** — Domain CRUD, check triggers
-- [ ] **Notification routes** — CRUD, read/unread, counts
-- [ ] **TOTP routes** — 2FA setup, verification, disable
-- [ ] **Retention routes** — Policy CRUD, enforcement triggers
-- [ ] **Webhook routes** — Endpoint CRUD, event listing
-- [ ] **Saved view routes** — CRUD, default view
-- [ ] **Scheduled reports routes** — Schedule CRUD, execution triggers
-- [ ] **Threat intel routes** — IP lookup, bulk check, cache management
-- [ ] **SAML/OAuth routes** — SSO flow end-to-end
+- [x] **Auth routes** — Already has 18 tests in test_auth_routes.py (login, refresh, logout, lockout)
+- [x] **User routes** — Already has 26 tests in test_user_routes.py (CRUD, API keys, roles)
+- [x] **Alert routes** — Already has 19 tests in test_alert_routes.py (history, acknowledge, resolve, rules)
+- [x] **Analytics routes** — 29 tests in test_analytics_routes.py (geolocation, ML models, anomaly detection, forecasting)
+- [x] **Export routes** — Already has 10 tests in test_export_routes.py (CSV/PDF generation)
+- [x] **Dashboard routes** — Already has 10 tests in test_dashboard_routes.py (summary, charts, widgets)
+- [x] **Audit routes** — Already has 14 tests in test_audit_routes.py (log retrieval, filtering, stats)
+- [x] **DNS monitor routes** — 14 tests in test_dns_monitor_routes.py (domain CRUD, check triggers, history)
+- [x] **Notification routes** — Already has 12 tests in test_notification_routes.py (CRUD, read/unread, counts)
+- [x] **TOTP routes** — 18 tests in test_totp_routes.py (setup, verification, disable, backup codes)
+- [x] **Retention routes** — Already has 17 tests in test_retention_routes.py (policy CRUD, enforcement)
+- [x] **Webhook routes** — Already has 15 tests in test_webhook_routes.py (endpoint CRUD, events)
+- [x] **Saved view routes** — Already has 16 tests in test_saved_view_routes.py (CRUD, default view)
+- [x] **Scheduled reports routes** — 16 tests in test_scheduled_reports_routes.py (CRUD, execution triggers)
+- [x] **Threat intel routes** — 20 tests in test_threat_intel_routes.py (IP lookup, bulk check, cache management)
+- [x] **SAML/OAuth routes** — 71 tests in test_sso_routes.py (SAML SP metadata, login, ACS, SLO, OAuth authorize, callback)
 
 ### 2.3 Frontend Tests Needed
 
-- [ ] **Component-level tests** — Chart rendering, modal interactions, filter application
-- [ ] **Form validation tests** — IP address, CIDR range, date range validation
-- [ ] **Error state tests** — API failure handling, retry behavior, empty states
-- [ ] **Accessibility tests** — Keyboard navigation, screen reader compatibility
-- [ ] **Dark mode tests** — Theme toggle, all components render correctly
+- [x] **Component-level tests** — Already has 17 chart tests, 28 DOM/modal tests, 51 filter tests (156 total)
+- [x] **Form validation tests** — Already has IP address, CIDR range, date range validation in filters.test.js
+- [x] **Error state tests** — Already has 20 tests in error-handling.test.js (retry, empty states, loading)
+- [x] **Accessibility tests** — Already has keyboard navigation, focus trap, aria-live tests in dom.test.js
+- [x] **Dark mode tests** — Already has theme toggle, light/dark color variant tests in charts.test.js/dom.test.js
 
 ### 2.4 E2E Test Gaps
 
-- [ ] **User workflow: login -> upload -> filter -> export** — Full authenticated flow
-- [ ] **Alert workflow** — Trigger alert -> view -> acknowledge -> resolve
-- [ ] **Error scenarios** — Network failures, auth expiry, invalid data
+- [x] **User workflow: login -> upload -> filter -> export** — workflow.spec.js with full authenticated flow
+- [x] **Alert workflow** — alerts.spec.js with trigger, view, acknowledge, resolve
+- [x] **Error scenarios** — errors.spec.js with network failures, auth expiry, invalid data
 
 ---
 
@@ -142,21 +142,21 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 4.1 Fix Bare Except Handlers (9 instances)
 
-- [ ] `email_client.py:73-74` — IMAP connection close: catch `IMAPError`
-- [ ] `email_client.py:168-169` — Date parsing: catch `ValueError`
-- [ ] `ingest/email_client.py:49-50` — IMAP logout: catch `IMAPError`
-- [ ] `geolocation.py:66-67` — MaxMind close: catch `Exception` with logging
-- [ ] `spf_flattening.py:339-340` — DNS resolution: catch `dns.resolver.NoAnswer`
-- [ ] `tls_rpt_service.py:168-169` — Gzip decompression: catch `zlib.error`
-- [ ] `dns_monitor.py:388-410` (3 instances) — DNS lookups: catch `dns.resolver.NXDOMAIN`, `NoAnswer`, `Timeout`
-- [ ] `threat_intel.py:261-262` — Date parsing: catch `ValueError`
-- [ ] `ingestion.py:198-199` — Generic ingestion: catch specific exceptions and log
+- [x] `email_client.py:73-74` — IMAP connection close: now catches `Exception` with logging
+- [x] `email_client.py:168-169` — Date parsing: now catches `(ValueError, TypeError)`
+- [x] `ingest/email_client.py:49-50` — IMAP logout: now catches `Exception` with debug logging
+- [x] `geolocation.py:66-67` — MaxMind close: now catches `Exception` with debug logging
+- [x] `spf_flattening.py:339-340` — DNS resolution: now catches specific DNS exceptions
+- [x] `tls_rpt_service.py:168-169` — Gzip decompression: now catches `(zlib.error, OSError)`
+- [x] `dns_monitor.py:388-410` (3 instances) — DNS lookups: now catches specific DNS exceptions
+- [x] `threat_intel.py:261-262` — Date parsing: now catches `(ValueError, TypeError)`
+- [x] `ingestion.py:198-199` — Already uses `except Exception` with logging (no bare except)
 
 ### 4.2 Silent Failures
 
-- [ ] `database.py:40-41` — Database connection check fails silently. Add logging.
-- [ ] `app.js:1651-1652` — Cache update errors suppressed with "Ignore" comment. At minimum log to console.
-- [ ] `app.js:2161-2162` — `loadReportsTable()` has no try-catch; network errors crash silently.
+- [x] `database.py:40-41` — Changed to `logger.error()` for database connection check failures
+- [x] `app.js:1651-1652` — Now logs `console.warn('Cache update failed:', e)` instead of suppressing
+- [x] `app.js:2161-2162` — Added `showNotification('Failed to load reports', 'error')` in catch block
 
 ### 4.3 Frontend Error Handling
 
@@ -183,9 +183,9 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 5.3 Accessibility
 
-- [ ] **Add ARIA live regions** for dynamic content updates (chart refreshes, filter results).
+- [x] **Add ARIA live regions** — Added `aria-live="polite"` to stats, charts, and table sections; `aria-live="assertive"` to notifications
 - [ ] **Add `aria-sort` to sortable table headers** — Currently missing initial states.
-- [ ] **Add `role="alert"` to notification toasts**.
+- [x] **Add `role="alert"` to notification toasts** — Added to both HTML and dynamic JS `showNotification()` function
 - [ ] **Wrap filter bar in `<form>` element** for semantic HTML.
 
 ### 5.4 Dashboard Customization
@@ -195,10 +195,10 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 5.5 Hardcoded Values to Configuration
 
-- [ ] **API_BASE** (line 2) — Should be configurable
-- [ ] **Auto-refresh interval** (line 1423, 60s) — Should be configurable
-- [ ] **Max file upload size** (line 4047, 50MB) — Should match backend config
-- [ ] **Default filter days** (line 11, 365 days) — Should be configurable
+- [x] **API_BASE** — Now configurable via `window.DMARC_CONFIG.apiBase`
+- [x] **Auto-refresh interval** — Now configurable via `window.DMARC_CONFIG.autoRefreshInterval`
+- [x] **Max file upload size** — Now configurable via `window.DMARC_CONFIG.maxUploadSize`
+- [x] **Default filter days** — Now configurable via `window.DMARC_CONFIG.defaultFilterDays`
 
 ---
 

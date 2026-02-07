@@ -1,5 +1,8 @@
 // API Base URL
-const API_BASE = '/api';
+const API_BASE = window.DMARC_CONFIG?.apiBase || '/api';
+
+// Default filter days
+const DEFAULT_FILTER_DAYS = window.DMARC_CONFIG?.defaultFilterDays || 365;
 
 // ==========================================
 // SHARED NAMESPACE
@@ -391,7 +394,7 @@ let alignmentChart, complianceChart, failureTrendChart, topOrganizationsChart;
 // Current filter state
 let currentFilters = {
     domain: '',
-    days: 365,  // Default to 365 days to capture more historical data
+    days: DEFAULT_FILTER_DAYS,  // Configurable default filter days
     startDate: null,
     endDate: null,
     sourceIp: '',
@@ -416,6 +419,7 @@ let loadingProgress = {
 };
 
 // Auto-refresh state
+const AUTO_REFRESH_INTERVAL = window.DMARC_CONFIG?.autoRefreshInterval || 60000;
 let autoRefreshInterval = null;
 let newDataAvailable = false;
 let lastDataHash = null;
@@ -1823,7 +1827,7 @@ function startSmartRefresh() {
         } catch (error) {
             console.error('Error checking for new data:', error);
         }
-    }, 60000); // Check every 60 seconds
+    }, AUTO_REFRESH_INTERVAL); // Configurable refresh interval
 }
 
 function showNewDataBanner() {
@@ -2052,7 +2056,7 @@ async function loadDashboard() {
         const data = await response.json();
         lastDataHash = JSON.stringify(data);
     } catch (e) {
-        // Ignore
+        console.warn('Cache update failed:', e);
     }
 
     // Check for any failures and show user-visible error indication
@@ -2230,7 +2234,7 @@ async function loadStats() {
         const hasNoFilters = !currentFilters.domain && !currentFilters.sourceIp &&
                             !currentFilters.sourceIpRange && !currentFilters.dkimResult &&
                             !currentFilters.spfResult && !currentFilters.disposition &&
-                            !currentFilters.orgName && currentFilters.days === 365;
+                            !currentFilters.orgName && currentFilters.days === DEFAULT_FILTER_DAYS;
 
         if (hasNoData && hasNoFilters) {
             // Show welcome empty state for first-time users
@@ -2585,6 +2589,7 @@ async function loadReportsTable() {
         data = await response.json();
     } catch (error) {
         console.error('Error loading reports table:', error);
+        showNotification('Failed to load reports', 'error');
         if (tbody) {
             tbody.textContent = '';
             const row = tbody.insertRow();
@@ -3178,7 +3183,7 @@ function applySavedView(view) {
         if (currentFilters.startDate && currentFilters.endDate) {
             dateRangeFilter.value = 'custom';
         } else {
-            dateRangeFilter.value = currentFilters.days?.toString() || '365';
+            dateRangeFilter.value = currentFilters.days?.toString() || DEFAULT_FILTER_DAYS.toString();
         }
     }
 
@@ -4545,7 +4550,8 @@ function setupUploadListeners() {
 
 function handleFileSelect(files) {
     const validExtensions = ['.xml', '.gz', '.zip'];
-    const maxSize = 50 * 1024 * 1024; // 50MB
+    const MAX_UPLOAD_SIZE = window.DMARC_CONFIG?.maxUploadSize || (50 * 1024 * 1024);
+    const maxSize = MAX_UPLOAD_SIZE;
 
     selectedFiles = [];
     const fileListItems = document.getElementById('fileListItems');
@@ -4689,6 +4695,8 @@ function showNotification(message, type = 'success') {
     const notification = document.getElementById('notification');
     notification.textContent = message;
     notification.className = `notification ${type} show`;
+    notification.setAttribute('role', 'alert');
+    notification.setAttribute('aria-live', 'assertive');
 
     setTimeout(() => {
         notification.className = 'notification';

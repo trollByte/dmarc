@@ -38,6 +38,10 @@ def db_engine():
     from app.models.notification import UserNotification
     from app.models.saved_view import SavedView
     from app.services.webhook_service import WebhookEndpoint, WebhookDelivery
+    from app.services.scheduled_reports_service import ScheduledReport, ReportDeliveryLog
+    from app.services.saml_service import SAMLProvider, SAMLSession
+    from app.services.threat_intel import ThreatIntelCache
+    from app.services.virustotal_service import VTCache
 
     # Create the test database if it doesn't exist
     if not database_exists(TEST_DATABASE_URL):

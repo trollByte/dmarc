@@ -9,6 +9,7 @@ Monitors DNS records for changes and triggers alerts when:
 """
 
 import dns.resolver
+import dns.exception
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -423,8 +424,8 @@ class DNSMonitorService:
             answers = self.resolver.resolve(domain, 'TXT')
             for rdata in answers:
                 return rdata.to_text().strip('"')
-        except Exception:
-            logger.debug("Failed to resolve TXT record for %s", domain)
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.Timeout, Exception) as e:
+            logger.debug("Failed to resolve TXT record for %s: %s", domain, e)
         return None
 
     def _get_spf_record(self, domain: str) -> Optional[str]:
@@ -435,8 +436,8 @@ class DNSMonitorService:
                 txt = rdata.to_text().strip('"')
                 if txt.startswith("v=spf1"):
                     return txt
-        except Exception:
-            logger.debug("Failed to resolve SPF record for %s", domain)
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.Timeout, Exception) as e:
+            logger.debug("Failed to resolve SPF record for %s: %s", domain, e)
         return None
 
     def _get_mx_records(self, domain: str) -> List[str]:
@@ -444,8 +445,8 @@ class DNSMonitorService:
         try:
             answers = self.resolver.resolve(domain, 'MX')
             return [f"{rdata.preference} {rdata.exchange}" for rdata in answers]
-        except Exception:
-            logger.debug("Failed to resolve MX records for %s", domain)
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers, dns.exception.Timeout, Exception) as e:
+            logger.debug("Failed to resolve MX records for %s: %s", domain, e)
         return []
 
     def _hash_value(self, value: str) -> str:

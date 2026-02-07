@@ -310,7 +310,7 @@
                                 </div>
                             </div>
                         </form>
-                        <section class="stats-section" aria-label="Key metrics">
+                        <section class="stats-section" aria-label="Key metrics" aria-live="polite">
                             <div class="stats-grid">
                                 <div class="stat-card" role="group" aria-labelledby="stat-reports-label"><div class="stat-header"><h3 id="stat-reports-label">Total Reports</h3><button class="stat-info-btn" aria-label="More info about total reports" title="Total DMARC aggregate reports received"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></button></div><div class="stat-content"><div id="totalReports" class="stat-value">-</div><div id="totalReportsTrend" class="stat-trend" aria-live="polite"></div></div></div>
                                 <div class="stat-card stat-card-success" role="group" aria-labelledby="stat-pass-label"><div class="stat-header"><h3 id="stat-pass-label">Pass Rate</h3><button class="stat-info-btn" aria-label="More info about pass rate" title="Percentage passing both SPF and DKIM"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></button></div><div class="stat-content"><div id="passRate" class="stat-value">-</div><div id="passRateTrend" class="stat-trend" aria-live="polite"></div></div></div>
@@ -318,7 +318,7 @@
                                 <div class="stat-card" role="group" aria-labelledby="stat-messages-label"><div class="stat-header"><h3 id="stat-messages-label">Total Messages</h3><button class="stat-info-btn" aria-label="More info about total messages" title="Total email messages in all reports"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg></button></div><div class="stat-content"><div id="totalMessages" class="stat-value">-</div><div id="totalMessagesTrend" class="stat-trend" aria-live="polite"></div></div></div>
                             </div>
                         </section>
-                        <section class="charts-section charts-section-primary" aria-label="Primary analytics">
+                        <section class="charts-section charts-section-primary" aria-label="Primary analytics" aria-live="polite">
                             <div class="charts-grid">
                                 <div class="chart-container" role="img" aria-label="DMARC results over time chart"><div class="chart-header"><h2>DMARC Results Over Time</h2></div><canvas id="timelineChart"></canvas></div>
                                 <div class="chart-container chart-interactive" role="img" aria-label="Results by domain chart - click to filter"><div class="chart-header"><h2>Results by Domain</h2><span class="chart-hint">Click to filter</span></div><canvas id="domainChart"></canvas></div>
@@ -328,7 +328,7 @@
                                 <div class="chart-container" role="img" aria-label="Disposition breakdown chart"><div class="chart-header"><h2>Disposition Breakdown</h2></div><canvas id="dispositionChart"></canvas></div>
                             </div>
                         </section>
-                        <section class="charts-section charts-section-secondary" aria-label="Additional analytics">
+                        <section class="charts-section charts-section-secondary" aria-label="Additional analytics" aria-live="polite">
                             <button id="toggleSecondaryCharts" class="section-toggle" aria-expanded="false" aria-controls="secondaryChartsContent">
                                 <svg class="icon icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 <span>Show More Analytics</span><span class="section-toggle-hint">4 additional charts</span>
@@ -344,7 +344,7 @@
                                 </div>
                             </div>
                         </section>
-                        <section class="table-section" aria-label="Recent reports">
+                        <section class="table-section" aria-label="Recent reports" aria-live="polite">
                             <div class="table-container">
                                 <div class="table-header"><h2>Recent Reports</h2><span id="tableResultCount" class="table-count"></span></div>
                                 <table id="reportsTable" aria-describedby="tableResultCount">
@@ -389,7 +389,7 @@
     </div>
 
     <!-- Notification Toast -->
-    <div id="notification" class="notification" role="alert" aria-live="polite"></div>
+    <div id="notification" class="notification" role="alert" aria-live="assertive"></div>
 
     <!-- New Data Available Banner -->
     <div id="newDataBanner" class="new-data-banner" hidden>

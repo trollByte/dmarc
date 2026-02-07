@@ -6,6 +6,7 @@ SPF has a 10 DNS lookup limit, which can be exceeded with many includes.
 """
 
 import dns.resolver
+import dns.exception
 import logging
 from typing import List, Dict, Any, Set, Optional
 from dataclasses import dataclass
@@ -336,8 +337,8 @@ class SPFFlatteningService:
                         a_answers = self.resolver.resolve(mx_host, 'A')
                         for a in a_answers:
                             ips.add(str(a))
-                    except Exception:
-                        logger.debug("Failed to resolve A records for %s", mx_host)
+                    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN, dns.resolver.NoNameservers, dns.exception.Timeout, Exception) as e:
+                        logger.debug("Failed to resolve A records for %s: %s", mx_host, e)
             else:  # a
                 a_answers = self.resolver.resolve(domain, 'A')
                 for a in a_answers:

@@ -258,8 +258,8 @@ class ThreatIntelService:
                     last_reported = datetime.fromisoformat(
                         data["lastReportedAt"].replace("Z", "+00:00")
                     ).replace(tzinfo=None)
-                except (ValueError, KeyError):
-                    pass
+                except (ValueError, TypeError) as e:
+                    logger.debug("Failed to parse lastReportedAt date: %s", e)
 
             # Cache the result
             cache_data = {
