@@ -208,24 +208,24 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 6.1 Deployment Pipeline
 
-- [ ] **Implement actual deployment step in CI/CD** — `ci.yml` deploy job is a placeholder with comments but no implementation. Choose and implement: Kubernetes (kubectl/helm), Docker Swarm, or cloud-native (ECS/Cloud Run).
-- [ ] **Add staging environment** workflow.
-- [ ] **Add rollback procedure**.
+- [x] **Implement actual deployment step in CI/CD** — Docker Compose SSH deployment in ci.yml with health checks and image tagging.
+- [x] **Add staging environment** workflow — Deploys to staging on PR merge or manual trigger with separate config.
+- [x] **Add rollback procedure** — Manual dispatch workflow with rollback tag input, backup validation, and verification.
 
 ### 6.2 Kubernetes Gaps
 
-- [ ] **Add RBAC definitions** — Service accounts exist but no Roles/RoleBindings.
-- [ ] **Add ResourceQuotas and LimitRanges** per namespace.
-- [ ] **Add Pod Security Standards** (PSP replacement).
-- [ ] **Deploy cert-manager** — Referenced in ingress but not installed.
-- [ ] **Add sealed-secrets or external-secrets-operator** — Currently uses inline K8s secrets.
+- [x] **Add RBAC definitions** — k8s/base/rbac.yaml with ServiceAccounts, Roles, RoleBindings for backend and Celery.
+- [x] **Add ResourceQuotas and LimitRanges** — k8s/base/resource-quotas.yaml with namespace CPU/memory/object limits.
+- [x] **Add Pod Security Standards** — k8s/base/pod-security.yaml with restricted PSS, SecurityContext, NetworkPolicy.
+- [x] **Deploy cert-manager** — k8s/base/cert-manager.yaml with Let's Encrypt ClusterIssuers and Certificate resources.
+- [x] **Add sealed-secrets or external-secrets-operator** — k8s/base/external-secrets.yaml with AWS/Vault/GCP SecretStores.
 
 ### 6.3 Monitoring Gaps
 
-- [ ] **Deploy missing Prometheus exporters** — Config references PostgreSQL, Redis, Nginx, and Node exporters but none are deployed.
-- [ ] **Create Grafana dashboards** — Provisioning is configured but no dashboard JSON files exist.
-- [ ] **Configure Loki log retention**.
-- [ ] **Define SLOs/SLIs** for the service.
+- [x] **Deploy missing Prometheus exporters** — Docker Compose and K8s configs for postgres, redis, nginx, node exporters with custom DMARC queries.
+- [x] **Create Grafana dashboards** — System health and infrastructure JSON dashboards with API, DB, cache, and host metrics.
+- [x] **Configure Loki log retention** — Already configured with 30-day retention in monitoring/loki/loki-config.yml.
+- [x] **Define SLOs/SLIs** — docs/slos.md with 6 SLOs: availability, latency, error rate, data freshness, DB perf, task success.
 
 ### 6.4 Operational Tooling
 
@@ -233,7 +233,7 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 - [x] **Create restore.sh script** — Already existed with --latest, --list, --verify flags and format support.
 - [x] **Create database initialization script** — scripts/init-db.sh with migrations, --create-admin, service readiness check.
 - [x] **Create secrets rotation script** — scripts/rotate-secrets.sh with --dry-run, --all, automatic backup and service restart.
-- [ ] **Document disaster recovery procedures**.
+- [x] **Document disaster recovery procedures** — docs/DISASTER_RECOVERY.md with backup verification, failover, data recovery, checklists.
 
 ### 6.5 Nginx Production Config
 

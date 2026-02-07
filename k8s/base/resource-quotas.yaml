@@ -1,0 +1,124 @@
+# ResourceQuotas and LimitRanges for DMARC Dashboard
+# Defines per-namespace resource constraints to prevent resource exhaustion
+---
+# ResourceQuota for the dmarc namespace
+# Limits total resources that can be consumed across all pods
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dmarc-resource-quota
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  hard:
+    # Compute resources
+    requests.cpu: "8"           # Total CPU requests (8 cores)
+    requests.memory: 16Gi       # Total memory requests (16 GB)
+    limits.cpu: "16"            # Total CPU limits (16 cores)
+    limits.memory: 32Gi         # Total memory limits (32 GB)
+
+    # Storage
+    requests.storage: 100Gi     # Total persistent volume claims
+    persistentvolumeclaims: "5" # Max number of PVCs
+
+    # Object counts
+    pods: "50"                  # Max number of pods
+    services: "10"              # Max number of services
+    secrets: "20"               # Max number of secrets
+    configmaps: "20"            # Max number of configmaps
+
+    # Service types
+    services.loadbalancers: "1" # Max LoadBalancer services
+    services.nodeports: "0"     # Disable NodePort services
+---
+# LimitRange for compute resources
+# Sets default and allowed ranges for container resources
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dmarc-compute-limits
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  limits:
+    # Container-level limits
+    - type: Container
+      default:
+        # Default limits (if not specified in pod spec)
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        # Default requests (if not specified in pod spec)
+        cpu: 100m
+        memory: 128Mi
+      max:
+        # Maximum allowed per container
+        cpu: "4"
+        memory: 8Gi
+      min:
+        # Minimum required per container
+        cpu: 50m
+        memory: 64Mi
+      maxLimitRequestRatio:
+        # Max ratio between limit and request
+        cpu: "4"
+        memory: "4"
+
+    # Pod-level limits (sum of all containers)
+    - type: Pod
+      max:
+        cpu: "8"
+        memory: 16Gi
+      min:
+        cpu: 100m
+        memory: 128Mi
+
+    # PersistentVolumeClaim limits
+    - type: PersistentVolumeClaim
+      max:
+        storage: 50Gi
+      min:
+        storage: 1Gi
+---
+# Additional ResourceQuota for object counts
+# Prevents creation of too many objects
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dmarc-object-quota
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  hard:
+    # Workload objects
+    count/deployments.apps: "10"
+    count/statefulsets.apps: "5"
+    count/jobs.batch: "100"
+    count/cronjobs.batch: "10"
+
+    # Networking objects
+    count/ingresses.networking.k8s.io: "5"
+    count/networkpolicies.networking.k8s.io: "10"
+
+    # Storage objects
+    count/persistentvolumeclaims: "5"
+---
+# LimitRange for storage
+# Sets requirements for PVCs
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dmarc-storage-limits
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  limits:
+    - type: PersistentVolumeClaim
+      max:
+        storage: 50Gi
+      min:
+        storage: 1Gi

@@ -1,0 +1,258 @@
+# cert-manager Configuration for DMARC Dashboard
+# Automates TLS certificate management using Let's Encrypt
+# Prerequisites: cert-manager must be installed in the cluster
+# Install: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+---
+# ClusterIssuer for Let's Encrypt production
+# Uses ACME HTTP-01 challenge
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  acme:
+    # Let's Encrypt production server
+    server: https://acme-v02.api.letsencrypt.org/directory
+
+    # Email for certificate expiration notifications
+    email: admin@example.com  # UPDATE THIS
+
+    # Private key secret for ACME account
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+
+    # HTTP-01 challenge solver
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+# ClusterIssuer for Let's Encrypt staging (for testing)
+# Use this for development to avoid rate limits
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  acme:
+    # Let's Encrypt staging server
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Email for certificate expiration notifications
+    email: admin@example.com  # UPDATE THIS
+
+    # Private key secret for ACME account
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+
+    # HTTP-01 challenge solver
+    solvers:
+      - http01:
+          ingress:
+            class: nginx
+---
+# ClusterIssuer for DNS-01 challenge (alternative)
+# Use this if HTTP-01 is not suitable (e.g., wildcard certs)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-dns-prod
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@example.com  # UPDATE THIS
+
+    privateKeySecretRef:
+      name: letsencrypt-dns-prod-account-key
+
+    # DNS-01 challenge solver (example for CloudFlare)
+    # Uncomment and configure for your DNS provider
+    solvers:
+      - dns01:
+          cloudflare:
+            email: cloudflare@example.com  # UPDATE THIS
+            apiTokenSecretRef:
+              name: cloudflare-api-token-secret
+              key: api-token
+        selector:
+          dnsZones:
+            - 'example.com'  # UPDATE THIS
+
+      # Alternative: Route53 (AWS)
+      # - dns01:
+      #     route53:
+      #       region: us-east-1
+      #       accessKeyID: YOUR_ACCESS_KEY_ID
+      #       secretAccessKeySecretRef:
+      #         name: route53-credentials-secret
+      #         key: secret-access-key
+
+      # Alternative: Google Cloud DNS
+      # - dns01:
+      #     cloudDNS:
+      #       project: your-project-id
+      #       serviceAccountSecretRef:
+      #         name: clouddns-service-account
+      #         key: key.json
+---
+# Certificate resource for DMARC Dashboard
+# cert-manager will automatically create and renew this certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dmarc-tls-cert
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  # Secret where certificate will be stored
+  secretName: dmarc-tls-secret
+
+  # Certificate validity duration
+  duration: 2160h    # 90 days
+  renewBefore: 360h  # 15 days before expiration
+
+  # Certificate subject
+  subject:
+    organizations:
+      - "DMARC Dashboard"
+
+  # Common name and alternative names
+  commonName: dmarc.example.com  # UPDATE THIS
+  dnsNames:
+    - dmarc.example.com         # UPDATE THIS
+    - www.dmarc.example.com     # UPDATE THIS (optional)
+
+  # Issuer reference
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+    rotationPolicy: Always
+
+  # Usages
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+---
+# Example: Wildcard certificate using DNS-01
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dmarc-wildcard-tls-cert
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+spec:
+  secretName: dmarc-wildcard-tls-secret
+  duration: 2160h
+  renewBefore: 360h
+
+  commonName: "*.example.com"  # UPDATE THIS
+  dnsNames:
+    - "*.example.com"          # UPDATE THIS
+    - example.com              # UPDATE THIS
+
+  issuerRef:
+    name: letsencrypt-dns-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+  privateKey:
+    algorithm: RSA
+    size: 2048
+---
+# ConfigMap with cert-manager usage instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-instructions
+  namespace: dmarc
+data:
+  README.md: |
+    # cert-manager Setup Instructions
+
+    ## Prerequisites
+
+    1. Install cert-manager in your cluster:
+       ```
+       kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+       ```
+
+    2. Verify installation:
+       ```
+       kubectl get pods -n cert-manager
+       ```
+
+    ## Configuration
+
+    1. Update email addresses in ClusterIssuers:
+       - Edit letsencrypt-prod
+       - Edit letsencrypt-staging
+       - Edit letsencrypt-dns-prod (if using DNS-01)
+
+    2. Update domain names in Certificate resources:
+       - Edit dmarc-tls-cert
+       - Edit dmarc-wildcard-tls-cert (if using wildcard)
+
+    3. For DNS-01 challenge (optional):
+       - Create DNS provider credentials secret
+       - Update ClusterIssuer with provider details
+
+    ## Apply Configuration
+
+    ```bash
+    kubectl apply -f cert-manager.yaml
+    ```
+
+    ## Verify Certificate
+
+    ```bash
+    # Check certificate status
+    kubectl get certificate -n dmarc
+
+    # Describe certificate for details
+    kubectl describe certificate dmarc-tls-cert -n dmarc
+
+    # Check certificate secret
+    kubectl get secret dmarc-tls-secret -n dmarc
+    ```
+
+    ## Troubleshooting
+
+    ```bash
+    # Check cert-manager logs
+    kubectl logs -n cert-manager deployment/cert-manager
+
+    # Check certificate challenges
+    kubectl get challenges -n dmarc
+
+    # Check certificate orders
+    kubectl get orders -n dmarc
+    ```
+
+    ## Using with Ingress
+
+    Add these annotations to your Ingress:
+    ```yaml
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    spec:
+      tls:
+        - hosts:
+            - dmarc.example.com
+          secretName: dmarc-tls-secret
+    ```

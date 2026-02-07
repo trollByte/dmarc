@@ -1,0 +1,199 @@
+# Pod Security Standards for DMARC Dashboard
+# Enforces security best practices using Pod Security Standards (PSS)
+# https://kubernetes.io/docs/concepts/security/pod-security-standards/
+---
+# Update namespace with Pod Security Standard labels
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/part-of: dmarc
+    # Pod Security Standards enforcement
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+# PodSecurityPolicy (deprecated in k8s 1.25+, use PSS labels above)
+# Kept for compatibility with older clusters
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: dmarc-restricted-psp
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
+spec:
+  # Privilege and access controls
+  privileged: false
+  allowPrivilegeEscalation: false
+
+  # Required security context
+  requiredDropCapabilities:
+    - ALL
+
+  # No root user
+  runAsUser:
+    rule: MustRunAsNonRoot
+
+  # SELinux
+  seLinux:
+    rule: RunAsAny
+
+  # Filesystem
+  fsGroup:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: RunAsAny
+
+  # Read-only root filesystem
+  readOnlyRootFilesystem: false
+
+  # Volume types
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+
+  # Host restrictions
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  hostPorts:
+    - min: 0
+      max: 0
+---
+# ClusterRole for using the PSP (if PSP enabled)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dmarc-psp-use
+spec:
+  rules:
+    - apiGroups: ['policy']
+      resources: ['podsecuritypolicies']
+      verbs: ['use']
+      resourceNames:
+        - dmarc-restricted-psp
+---
+# RoleBinding for PSP (if PSP enabled)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dmarc-psp-use
+  namespace: dmarc
+roleRef:
+  kind: ClusterRole
+  name: dmarc-psp-use
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: dmarc-backend-sa
+    namespace: dmarc
+  - kind: ServiceAccount
+    name: dmarc-celery-sa
+    namespace: dmarc
+---
+# SecurityContext example for deployments
+# Apply this to all pod specs in deployments
+# This is a template/example - actual implementation should be in deployment specs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-context-template
+  namespace: dmarc
+data:
+  pod-security-context.yaml: |
+    # Pod-level security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Container-level security context (apply to each container)
+    containers:
+      - name: example-container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+---
+# NetworkPolicy for additional security
+# Restricts pod-to-pod communication
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dmarc-security-network-policy
+  namespace: dmarc
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+  # Ingress rules
+  ingress:
+    # Allow from ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8000
+
+    # Allow internal communication
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+
+  # Egress rules
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow internal communication
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+
+    # Allow external HTTPS (for API calls, MaxMind, etc.)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80

@@ -1,0 +1,152 @@
+# RBAC Definitions for DMARC Dashboard
+# Defines roles and permissions for service accounts
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dmarc-backend-sa
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: backend
+automountServiceAccountToken: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dmarc-celery-sa
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: celery
+automountServiceAccountToken: true
+---
+# Role for backend API service
+# Permissions needed for health checks and config management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dmarc-backend-role
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: backend
+rules:
+  # Allow reading ConfigMaps for application configuration
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Allow reading Secrets for credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  # Allow reading own pod information for debugging
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Allow reading services for service discovery
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list"]
+---
+# Role for Celery workers
+# Permissions for task processing and queue management
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dmarc-celery-role
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: celery
+rules:
+  # Allow reading ConfigMaps
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  # Allow reading Secrets
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  # Allow reading own pod information
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Allow reading services
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list"]
+  # Allow reading PersistentVolumeClaims for report storage
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list"]
+---
+# RoleBinding for backend service
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dmarc-backend-rolebinding
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: backend
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dmarc-backend-role
+subjects:
+  - kind: ServiceAccount
+    name: dmarc-backend-sa
+    namespace: dmarc
+---
+# RoleBinding for Celery workers
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dmarc-celery-rolebinding
+  namespace: dmarc
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: celery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: dmarc-celery-role
+subjects:
+  - kind: ServiceAccount
+    name: dmarc-celery-sa
+    namespace: dmarc
+---
+# ClusterRole for monitoring integration (optional)
+# Allows Prometheus to scrape metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dmarc-metrics-reader
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get", "list"]
+---
+# ClusterRoleBinding for metrics (optional)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dmarc-metrics-reader-binding
+  labels:
+    app.kubernetes.io/name: dmarc-dashboard
+    app.kubernetes.io/component: monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dmarc-metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: monitoring

@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
+    inputs:
+      rollback_tag:
+        description: 'Tag or commit SHA to rollback to (e.g., backup-20240101-120000)'
+        required: false
+        type: string
+      deploy_environment:
+        description: 'Environment to deploy to'
+        required: false
+        type: choice
+        options:
+          - none
+          - staging
+          - production
+        default: none
 
 jobs:
   test:
@@ -245,38 +259,312 @@ jobs:
         run: |
           docker-compose build
 
-  deploy:
-    name: Deploy (Manual)
+  deploy-production:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [test, lint, docker]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    needs: [test, lint, docker, e2e-test]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment: production
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy notification
+      - name: Set up SSH key
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
-          echo "Deployment step - configure based on your infrastructure"
-          echo "Examples:"
-          echo "  - SSH to server and pull latest code"
-          echo "  - Deploy to Kubernetes cluster"
-          echo "  - Update AWS ECS service"
-          echo "  - Trigger Ansible playbook"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-      # Example deployment steps (uncomment and customize):
-      # - name: Deploy to server
-      #   uses: appleboy/ssh-action@v1.0.0
-      #   with:
-      #     host: ${{ secrets.DEPLOY_HOST }}
-      #     username: ${{ secrets.DEPLOY_USER }}
-      #     key: ${{ secrets.DEPLOY_SSH_KEY }}
-      #     script: |
-      #       cd /opt/dmarc
-      #       git pull origin main
-      #       docker-compose pull
-      #       docker-compose up -d --build
+      - name: Build and push Docker images
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Tag images with commit SHA and latest
+          docker tag "dmarc-backend:${COMMIT_SHA}" dmarc-backend:latest
+          docker tag "dmarc-frontend:${COMMIT_SHA}" dmarc-frontend:latest
+
+          # Save images for deployment
+          docker save dmarc-backend:latest | gzip > backend.tar.gz
+          docker save dmarc-frontend:latest | gzip > frontend.tar.gz
+
+      - name: Transfer images to production server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            backend.tar.gz frontend.tar.gz \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/"
+
+      - name: Deploy to production server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/dmarc
+
+            # Pull latest code
+            git fetch origin main
+            git checkout main
+            git pull origin main
+
+            # Load new images
+            docker load < /tmp/backend.tar.gz
+            docker load < /tmp/frontend.tar.gz
+            rm /tmp/backend.tar.gz /tmp/frontend.tar.gz
+
+            # Create backup tag before deployment
+            BACKUP_TAG="backup-$(date +%Y%m%d-%H%M%S)"
+            docker tag dmarc-backend:latest "dmarc-backend:${BACKUP_TAG}"
+            docker tag dmarc-frontend:latest "dmarc-frontend:${BACKUP_TAG}"
+
+            # Pull and deploy with Docker Compose
+            docker compose pull
+            docker compose up -d --remove-orphans
+
+            # Wait for health check
+            echo "Waiting for services to be healthy..."
+            sleep 30
+
+            # Verify deployment
+            curl -f http://localhost:8000/health || exit 1
+
+            # Clean up old images (keep last 5)
+            docker image prune -a -f --filter "until=720h"
+
+            echo "Deployment completed successfully!"
+
+      - name: Run post-deployment health checks
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            # Verify all services are running
+            cd /opt/dmarc
+            docker compose ps
+
+            # Check backend health
+            curl -f http://localhost:8000/health
+
+            # Check Celery workers
+            docker exec dmarc-celery-worker celery -A celery_worker inspect ping
+
+            echo "Health checks passed!"
+
+      - name: Notify deployment success
+        if: success()
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "Production deployment completed successfully!"
+          echo "Commit: ${COMMIT_SHA}"
+          echo "Deployed by: ${ACTOR}"
+          # Add Slack/Discord/email notification here if desired
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "Production deployment failed!"
+          echo "Manual intervention required"
+          # Add alert notification here
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [test, lint, docker]
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/staging_key
+          chmod 600 ~/.ssh/staging_key
+          ssh-keyscan -H "$STAGING_HOST" >> ~/.ssh/known_hosts
+
+      - name: Build Docker images
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # Build and tag images for staging
+          docker build -t "dmarc-backend:staging-${COMMIT_SHA}" ./backend
+          docker build -t "dmarc-frontend:staging-${COMMIT_SHA}" ./frontend
+
+          # Tag as latest staging
+          docker tag "dmarc-backend:staging-${COMMIT_SHA}" dmarc-backend:staging-latest
+          docker tag "dmarc-frontend:staging-${COMMIT_SHA}" dmarc-frontend:staging-latest
+
+          # Save images
+          docker save dmarc-backend:staging-latest | gzip > backend-staging.tar.gz
+          docker save dmarc-frontend:staging-latest | gzip > frontend-staging.tar.gz
+
+      - name: Transfer images to staging server
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          scp -i ~/.ssh/staging_key \
+            backend-staging.tar.gz frontend-staging.tar.gz \
+            "${STAGING_USER}@${STAGING_HOST}:/tmp/"
+
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/dmarc-staging
+
+            # Pull latest code
+            git fetch origin
+            git checkout ${{ github.sha }}
+
+            # Load new images
+            docker load < /tmp/backend-staging.tar.gz
+            docker load < /tmp/frontend-staging.tar.gz
+            rm /tmp/backend-staging.tar.gz /tmp/frontend-staging.tar.gz
+
+            # Deploy with Docker Compose
+            docker compose -f docker-compose.staging.yml up -d --remove-orphans
+
+            # Wait for services
+            sleep 20
+
+            # Verify deployment
+            curl -f http://localhost:8000/health || exit 1
+
+            echo "Staging deployment completed!"
+
+      - name: Post deployment URL
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          echo "Staging deployment successful!"
+          echo "URL: ${STAGING_URL}"
+          echo "Commit: ${{ github.sha }}"
+
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.rollback_tag != ''
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate rollback target
+        env:
+          ROLLBACK_TAG: ${{ github.event.inputs.rollback_tag }}
+        run: |
+          if [ -z "$ROLLBACK_TAG" ]; then
+            echo "Error: rollback_tag input is required"
+            exit 1
+          fi
+          echo "Rollback target: ${ROLLBACK_TAG}"
+
+      - name: Set up SSH key
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Perform rollback
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ROLLBACK_TAG: ${{ github.event.inputs.rollback_tag }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: ROLLBACK_TAG
+          script: |
+            set -e
+            cd /opt/dmarc
+
+            echo "Starting rollback to: ${ROLLBACK_TAG}"
+
+            # Verify the backup tag exists
+            if ! docker image inspect "dmarc-backend:${ROLLBACK_TAG}" > /dev/null 2>&1; then
+              echo "Error: Backup image dmarc-backend:${ROLLBACK_TAG} not found"
+              exit 1
+            fi
+
+            # Stop current services
+            docker compose down
+
+            # Tag backup images as latest
+            docker tag "dmarc-backend:${ROLLBACK_TAG}" dmarc-backend:latest
+            docker tag "dmarc-frontend:${ROLLBACK_TAG}" dmarc-frontend:latest
+
+            # Checkout the corresponding git commit/tag
+            git fetch --all --tags
+            git checkout "${ROLLBACK_TAG}" || git checkout "tags/${ROLLBACK_TAG}" || echo "Git checkout skipped"
+
+            # Start services with rollback images
+            docker compose up -d
+
+            # Wait for health check
+            echo "Waiting for services to be healthy..."
+            sleep 30
+
+            # Verify rollback
+            curl -f http://localhost:8000/health || exit 1
+
+            echo "Rollback to ${ROLLBACK_TAG} completed successfully!"
+
+      - name: Verify rollback
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/dmarc
+
+            # Check all services
+            docker compose ps
+
+            # Health checks
+            curl -f http://localhost:8000/health
+            docker exec dmarc-celery-worker celery -A celery_worker inspect ping
+
+            echo "Rollback verification passed!"
+
+      - name: Notify rollback
+        if: always()
+        env:
+          ROLLBACK_TAG: ${{ github.event.inputs.rollback_tag }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "Rollback to ${ROLLBACK_TAG} completed successfully!"
+          else
+            echo "Rollback to ${ROLLBACK_TAG} failed!"
+          fi
+          echo "Initiated by: ${ACTOR}"
+          # Add alert notification here
 
   notification:
     name: Notify

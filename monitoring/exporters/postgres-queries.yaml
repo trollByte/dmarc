@@ -1,0 +1,164 @@
+# Custom PostgreSQL queries for DMARC Dashboard
+# These queries provide application-specific metrics
+---
+# DMARC Reports metrics
+dmarc_reports:
+  query: |
+    SELECT
+      COUNT(*) as total_reports,
+      COUNT(DISTINCT org_name) as unique_organizations,
+      SUM(CASE WHEN date_range_begin >= NOW() - INTERVAL '24 hours' THEN 1 ELSE 0 END) as reports_last_24h,
+      SUM(CASE WHEN date_range_begin >= NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) as reports_last_7d
+    FROM dmarc_reports
+  metrics:
+    - total_reports:
+        usage: "GAUGE"
+        description: "Total number of DMARC reports"
+    - unique_organizations:
+        usage: "GAUGE"
+        description: "Number of unique reporting organizations"
+    - reports_last_24h:
+        usage: "GAUGE"
+        description: "Number of reports received in last 24 hours"
+    - reports_last_7d:
+        usage: "GAUGE"
+        description: "Number of reports received in last 7 days"
+
+# DMARC Records metrics
+dmarc_records:
+  query: |
+    SELECT
+      COUNT(*) as total_records,
+      SUM(CASE WHEN disposition = 'pass' THEN count ELSE 0 END) as pass_count,
+      SUM(CASE WHEN disposition = 'fail' THEN count ELSE 0 END) as fail_count,
+      SUM(CASE WHEN dkim_result = 'pass' THEN count ELSE 0 END) as dkim_pass_count,
+      SUM(CASE WHEN spf_result = 'pass' THEN count ELSE 0 END) as spf_pass_count
+    FROM dmarc_records
+    WHERE created_at >= NOW() - INTERVAL '24 hours'
+  metrics:
+    - total_records:
+        usage: "GAUGE"
+        description: "Total DMARC records in last 24 hours"
+    - pass_count:
+        usage: "GAUGE"
+        description: "Number of passing records"
+    - fail_count:
+        usage: "GAUGE"
+        description: "Number of failing records"
+    - dkim_pass_count:
+        usage: "GAUGE"
+        description: "Number of DKIM passing records"
+    - spf_pass_count:
+        usage: "GAUGE"
+        description: "Number of SPF passing records"
+
+# Ingestion metrics
+ingested_reports:
+  query: |
+    SELECT
+      COUNT(*) as total_ingested,
+      SUM(CASE WHEN status = 'processed' THEN 1 ELSE 0 END) as processed,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending
+    FROM ingested_reports
+    WHERE ingested_at >= NOW() - INTERVAL '1 hour'
+  metrics:
+    - total_ingested:
+        usage: "GAUGE"
+        description: "Total reports ingested in last hour"
+    - processed:
+        usage: "GAUGE"
+        description: "Successfully processed reports"
+    - failed:
+        usage: "GAUGE"
+        description: "Failed report processing"
+    - pending:
+        usage: "GAUGE"
+        description: "Reports pending processing"
+
+# Alert metrics
+alert_history:
+  query: |
+    SELECT
+      COUNT(*) as total_alerts,
+      SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical_alerts,
+      SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) as warning_alerts,
+      SUM(CASE WHEN severity = 'info' THEN 1 ELSE 0 END) as info_alerts,
+      SUM(CASE WHEN triggered_at >= NOW() - INTERVAL '1 hour' THEN 1 ELSE 0 END) as alerts_last_hour
+    FROM alert_history
+    WHERE triggered_at >= NOW() - INTERVAL '24 hours'
+  metrics:
+    - total_alerts:
+        usage: "GAUGE"
+        description: "Total alerts in last 24 hours"
+    - critical_alerts:
+        usage: "GAUGE"
+        description: "Critical alerts in last 24 hours"
+    - warning_alerts:
+        usage: "GAUGE"
+        description: "Warning alerts in last 24 hours"
+    - info_alerts:
+        usage: "GAUGE"
+        description: "Info alerts in last 24 hours"
+    - alerts_last_hour:
+        usage: "GAUGE"
+        description: "Alerts triggered in last hour"
+
+# User activity metrics
+user_activity:
+  query: |
+    SELECT
+      COUNT(DISTINCT id) as total_users,
+      SUM(CASE WHEN is_active = true THEN 1 ELSE 0 END) as active_users,
+      SUM(CASE WHEN last_login >= NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) as recent_logins
+    FROM users
+  metrics:
+    - total_users:
+        usage: "GAUGE"
+        description: "Total number of users"
+    - active_users:
+        usage: "GAUGE"
+        description: "Number of active users"
+    - recent_logins:
+        usage: "GAUGE"
+        description: "Users who logged in within last 7 days"
+
+# Database size metrics
+database_size:
+  query: |
+    SELECT
+      pg_database_size(current_database()) as db_size_bytes,
+      (SELECT COUNT(*) FROM pg_stat_activity) as active_connections,
+      (SELECT COUNT(*) FROM pg_stat_activity WHERE state = 'active') as active_queries
+  metrics:
+    - db_size_bytes:
+        usage: "GAUGE"
+        description: "Database size in bytes"
+    - active_connections:
+        usage: "GAUGE"
+        description: "Number of active database connections"
+    - active_queries:
+        usage: "GAUGE"
+        description: "Number of active queries"
+
+# Table sizes
+table_sizes:
+  query: |
+    SELECT
+      schemaname,
+      tablename,
+      pg_total_relation_size(schemaname||'.'||tablename) as size_bytes
+    FROM pg_tables
+    WHERE schemaname = 'public'
+    ORDER BY size_bytes DESC
+    LIMIT 10
+  metrics:
+    - schemaname:
+        usage: "LABEL"
+        description: "Schema name"
+    - tablename:
+        usage: "LABEL"
+        description: "Table name"
+    - size_bytes:
+        usage: "GAUGE"
+        description: "Table size in bytes"

@@ -23,6 +23,13 @@ resources:
   - ingress.yaml
   - pdb.yaml
   - network-policies.yaml
+  # Phase 6 additions
+  - rbac.yaml
+  - resource-quotas.yaml
+  - pod-security.yaml
+  - cert-manager.yaml
+  - external-secrets.yaml
+  - exporters.yaml
 
 # Image configuration - override in overlays
 images:
