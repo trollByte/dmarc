@@ -5,15 +5,12 @@ Handles:
 - Generating secure reset tokens
 - Validating reset tokens
 - Resetting passwords
-- Sending reset emails (placeholder for email integration)
+- Sending reset emails via SMTP (falls back to logging when SMTP is not configured)
 """
 
 import secrets
 import hashlib
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
@@ -22,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models import User, PasswordResetToken
 from app.services.auth_service import AuthService
+from app.services.notifications import NotificationService, SMTPConfig
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -193,7 +191,10 @@ class PasswordResetService:
         reset_url_base: str
     ) -> bool:
         """
-        Send password reset email via SMTP.
+        Send password reset email via SMTP using the NotificationService.
+
+        Falls back to logging the reset URL when SMTP is not configured,
+        which is useful during development.
 
         Args:
             email: Recipient email address
@@ -201,12 +202,12 @@ class PasswordResetService:
             reset_url_base: Base URL for the reset page
 
         Returns:
-            True if email was sent (or queued) successfully
+            True if email was sent (or logged as fallback) successfully
         """
         reset_url = f"{reset_url_base}?token={reset_token}"
 
-        smtp_host = getattr(settings, 'smtp_host', '')
-        smtp_from = getattr(settings, 'smtp_from', '')
+        smtp_host = settings.smtp_host
+        smtp_from = settings.smtp_from
 
         if not smtp_host or not smtp_from:
             logger.info(f"SMTP not configured, logging reset link for {email}")
@@ -214,10 +215,16 @@ class PasswordResetService:
             return True
 
         try:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = "Password Reset Request - DMARC Dashboard"
-            msg['From'] = smtp_from
-            msg['To'] = email
+            notification_service = NotificationService()
+            smtp_config = SMTPConfig(
+                host=smtp_host,
+                port=settings.smtp_port,
+                user=settings.smtp_user or None,
+                password=settings.smtp_password or None,
+                from_address=smtp_from,
+                to_address=email,
+                use_tls=settings.smtp_use_tls,
+            )
 
             html_body = f"""
             <html>
@@ -234,19 +241,12 @@ class PasswordResetService:
             </body>
             </html>
             """
-            msg.attach(MIMEText(html_body, 'html'))
 
-            smtp_port = getattr(settings, 'smtp_port', 587)
-            smtp_user = getattr(settings, 'smtp_user', None)
-            smtp_password = getattr(settings, 'smtp_password', None)
-            use_tls = getattr(settings, 'smtp_use_tls', True)
-
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
-                if use_tls:
-                    server.starttls()
-                if smtp_user and smtp_password:
-                    server.login(smtp_user, smtp_password)
-                server.send_message(msg)
+            notification_service._send_email(
+                subject="Password Reset Request - DMARC Dashboard",
+                html_body=html_body,
+                config=smtp_config,
+            )
 
             logger.info(f"Password reset email sent to {email}")
             return True

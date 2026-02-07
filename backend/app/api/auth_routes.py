@@ -370,9 +370,8 @@ async def request_password_reset(
         request_ip=client_ip
     )
 
-    # If we have a token, send reset email
+    # If we have a token, send reset email (via SMTP, or logs URL if SMTP not configured)
     if token:
-        # In production, this would send a real email
         reset_url_base = f"{settings.frontend_url}/reset-password"
         service.send_reset_email(
             email=reset_request.email,

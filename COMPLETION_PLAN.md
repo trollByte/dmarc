@@ -32,7 +32,7 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 1.3 Implement Password Reset Email
 
-- [ ] **Complete password reset flow** — `password_reset_service.py:209` has `TODO: Integrate with actual email service` — currently only logs. Wire up SMTP sending using the existing notification service's email transport.
+- [x] **Complete password reset flow** — Refactored `send_reset_email()` to use `NotificationService._send_email()` with `SMTPConfig`. Falls back to logging reset URL when SMTP not configured (dev mode).
 
 ---
 
