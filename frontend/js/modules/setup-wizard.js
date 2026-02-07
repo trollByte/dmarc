@@ -27,6 +27,9 @@ async function checkSetupNeeded() {
         // Network error or endpoint not found — assume configured
         console.warn('Setup status check failed, assuming configured:', e.message);
     }
+    // Remove wizard from DOM so its inputs don't interfere with login selectors
+    const overlay = document.getElementById('setupWizardOverlay');
+    if (overlay) overlay.remove();
     return false;
 }
 

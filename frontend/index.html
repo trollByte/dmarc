@@ -53,7 +53,7 @@
                     <h1 class="login-title">Create Admin Account</h1>
                     <p class="login-subtitle">This will be your login for the dashboard.</p>
                 </div>
-                <form id="setupAdminForm" class="login-form" onsubmit="return false;">
+                <div id="setupAdminForm" class="login-form">
                     <div class="login-field">
                         <label for="setupEmail">Email</label>
                         <input type="email" id="setupEmail" required placeholder="admin@yourcompany.com" autocomplete="email">
@@ -71,7 +71,7 @@
                         <button type="button" class="btn-secondary" onclick="setupWizardBack()" style="flex:1;">Back</button>
                         <button type="button" class="btn-primary login-submit" onclick="setupWizardNext()" style="flex:2;">Continue</button>
                     </div>
-                </form>
+                </div>
             </div>
 
             <!-- Step 4: Optional Integrations -->

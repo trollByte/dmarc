@@ -77,14 +77,27 @@ class SetupInitializeResponse(BaseModel):
     response_model=SetupStatusResponse,
     summary="Check if initial setup is needed",
 )
-async def setup_status():
+async def setup_status(db: Session = Depends(get_db)):
     """
     Returns whether the application has been configured.
 
     If configured is false, the frontend should show the setup wizard.
     This endpoint is always accessible (no auth required).
+
+    Checks the marker file first, then falls back to checking the DB
+    for an existing admin user (handles apps set up before the wizard existed).
     """
-    return SetupStatusResponse(configured=is_configured())
+    if is_configured():
+        return SetupStatusResponse(configured=True)
+    # Fallback: if an admin user already exists, the app was set up another way
+    try:
+        has_admin = db.query(User).filter(User.role == UserRole.ADMIN.value).first() is not None
+        if has_admin:
+            _write_marker()  # Persist so we don't hit DB every time
+            return SetupStatusResponse(configured=True)
+    except Exception:
+        pass  # DB not ready yet — fall through to unconfigured
+    return SetupStatusResponse(configured=False)
 
 
 @router.post(
