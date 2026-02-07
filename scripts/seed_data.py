@@ -19,8 +19,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from passlib.context import CryptContext
+
 from app.database import Base
 from app.models.dmarc import DmarcRecord, DmarcReport, IngestedReport
+from app.models.user import User, UserRole
+from app.models.alert import AlertRule, AlertType, AlertSeverity
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://dmarc:dmarc@db:5432/dmarc")
 
@@ -65,6 +69,123 @@ SOURCE_IPS = [
     "185.220.101.1",
     "23.129.64.100",
 ]
+
+
+def generate_users(session):
+    """Generate sample users with different roles."""
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    now = datetime.utcnow()
+
+    users = [
+        {
+            "username": "admin",
+            "email": "admin@example.com",
+            "password": "admin123",
+            "role": UserRole.ADMIN.value,
+        },
+        {
+            "username": "analyst",
+            "email": "analyst@example.com",
+            "password": "analyst123",
+            "role": UserRole.ANALYST.value,
+        },
+        {
+            "username": "viewer",
+            "email": "viewer@example.com",
+            "password": "viewer123",
+            "role": UserRole.VIEWER.value,
+        },
+    ]
+
+    created = 0
+    for user_data in users:
+        # Check if user already exists
+        existing = session.query(User).filter_by(username=user_data["username"]).first()
+        if existing:
+            print(f"  User '{user_data['username']}' already exists, skipping")
+            continue
+
+        user = User(
+            username=user_data["username"],
+            email=user_data["email"],
+            hashed_password=pwd_context.hash(user_data["password"]),
+            role=user_data["role"],
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(user)
+        created += 1
+        print(f"  Created user: {user_data['username']} (role: {user_data['role']}, password: {user_data['password']})")
+
+    session.commit()
+    return created
+
+
+def generate_alert_rules(session):
+    """Generate sample alert rules."""
+    now = datetime.utcnow()
+
+    rules = [
+        {
+            "name": "High Failure Rate Alert",
+            "alert_type": AlertType.FAILURE_RATE.value,
+            "severity": AlertSeverity.CRITICAL.value,
+            "threshold": 25.0,
+            "description": "Alert when DMARC failure rate exceeds 25%",
+            "enabled": True,
+        },
+        {
+            "name": "Volume Spike Detection",
+            "alert_type": AlertType.VOLUME_SPIKE.value,
+            "severity": AlertSeverity.WARNING.value,
+            "threshold": 50.0,
+            "description": "Alert when email volume increases by more than 50%",
+            "enabled": True,
+        },
+        {
+            "name": "Volume Drop Detection",
+            "alert_type": AlertType.VOLUME_DROP.value,
+            "severity": AlertSeverity.WARNING.value,
+            "threshold": -30.0,
+            "description": "Alert when email volume decreases by more than 30%",
+            "enabled": True,
+        },
+        {
+            "name": "New Source IP Detection",
+            "alert_type": AlertType.NEW_SOURCE.value,
+            "severity": AlertSeverity.INFO.value,
+            "threshold": 0.0,
+            "description": "Alert when a new source IP is detected",
+            "enabled": False,  # Can be noisy
+        },
+    ]
+
+    created = 0
+    for rule_data in rules:
+        # Check if rule already exists
+        existing = session.query(AlertRule).filter_by(name=rule_data["name"]).first()
+        if existing:
+            print(f"  Alert rule '{rule_data['name']}' already exists, skipping")
+            continue
+
+        rule = AlertRule(
+            name=rule_data["name"],
+            alert_type=rule_data["alert_type"],
+            severity=rule_data["severity"],
+            threshold=rule_data["threshold"],
+            description=rule_data["description"],
+            enabled=rule_data["enabled"],
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(rule)
+        created += 1
+        status = "enabled" if rule_data["enabled"] else "disabled"
+        print(f"  Created alert rule: {rule_data['name']} ({status})")
+
+    session.commit()
+    return created
 
 
 def generate_reports(session, count=15):
@@ -167,9 +288,9 @@ def generate_reports(session, count=15):
 
 
 def main():
-    print("=" * 50)
-    print("DMARC Seed Data Generator")
-    print("=" * 50)
+    print("=" * 60)
+    print("DMARC Dashboard - Seed Data Generator")
+    print("=" * 60)
     print(f"Database: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else DATABASE_URL}")
     print()
 
@@ -178,26 +299,77 @@ def main():
     session = Session()
 
     try:
-        # Check existing data
-        existing = session.query(DmarcReport).count()
-        print(f"Existing reports in database: {existing}")
+        # Generate users
+        print("=" * 60)
+        print("1. Generating Sample Users")
+        print("=" * 60)
+        existing_users = session.query(User).count()
+        print(f"Existing users: {existing_users}")
+        print()
+
+        users_created = generate_users(session)
+        print()
+        print(f"Users created: {users_created}")
+        print(f"Total users: {session.query(User).count()}")
+        print()
+
+        # Generate alert rules
+        print("=" * 60)
+        print("2. Generating Alert Rules")
+        print("=" * 60)
+        existing_rules = session.query(AlertRule).count()
+        print(f"Existing alert rules: {existing_rules}")
+        print()
+
+        rules_created = generate_alert_rules(session)
+        print()
+        print(f"Alert rules created: {rules_created}")
+        print(f"Total alert rules: {session.query(AlertRule).count()}")
+        print()
+
+        # Generate DMARC reports
+        print("=" * 60)
+        print("3. Generating DMARC Reports")
+        print("=" * 60)
+        existing_reports = session.query(DmarcReport).count()
+        print(f"Existing reports: {existing_reports}")
         print()
 
         count = 15
         print(f"Generating {count} sample DMARC reports...")
         print()
-        created = generate_reports(session, count)
+        reports_created = generate_reports(session, count)
 
-        total = session.query(DmarcReport).count()
+        total_reports = session.query(DmarcReport).count()
         total_records = session.query(DmarcRecord).count()
         print()
-        print(f"Seed complete: {created} reports created")
-        print(f"Total reports: {total}")
+        print(f"Reports created: {reports_created}")
+        print(f"Total reports: {total_reports}")
         print(f"Total records: {total_records}")
+        print()
+
+        # Summary
+        print("=" * 60)
+        print("Seed Data Summary")
+        print("=" * 60)
+        print(f"Users:        {session.query(User).count()} ({users_created} new)")
+        print(f"Alert Rules:  {session.query(AlertRule).count()} ({rules_created} new)")
+        print(f"Reports:      {total_reports} ({reports_created} new)")
+        print(f"Records:      {total_records}")
+        print()
+        print("Sample Credentials:")
+        print("  Admin:    username=admin    password=admin123")
+        print("  Analyst:  username=analyst  password=analyst123")
+        print("  Viewer:   username=viewer   password=viewer123")
+        print()
+        print("Access the dashboard at: http://localhost")
+        print("=" * 60)
 
     except Exception as e:
         session.rollback()
+        import traceback
         print(f"Error: {e}")
+        traceback.print_exc()
         sys.exit(1)
     finally:
         session.close()

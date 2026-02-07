@@ -160,9 +160,9 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 4.3 Frontend Error Handling
 
-- [ ] **Add error display for failed dashboard component loads** — `Promise.allSettled()` tracks failures but doesn't show them to the user.
-- [ ] **Add retry mechanisms** — Currently generic error messages with no retry options for API failures.
-- [ ] **Add file-specific error details** for upload failures.
+- [x] **Add error display for failed dashboard component loads** — showNotification now shows which components failed with actionable retry button.
+- [x] **Add retry mechanisms** — Enhanced showNotification() with optional retryCallback parameter; retry button on dashboard load failures.
+- [x] **Add file-specific error details** for upload failures — Enhanced error extraction from server responses with detailed backend error messages.
 
 ---
 
@@ -172,26 +172,26 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 5.1 Responsive Design
 
-- [ ] **Add tablet breakpoint** (768px-1024px) — Only one media query at 768px exists.
-- [ ] **Add large screen layout** (>1400px) — Content stretches awkwardly.
-- [ ] **Fix header actions wrapping** on mobile (480px viewport).
+- [x] **Add tablet breakpoint** (768px-1024px) — 2-column grid for stat cards and charts with optimized padding.
+- [x] **Add large screen layout** (>1400px) — 4-column stat card grid, 2-column chart grid, max-width 1600px.
+- [x] **Fix header actions wrapping** on mobile (480px viewport) — Single column grid, full-width buttons, smaller font.
 
 ### 5.2 Dark Mode Completeness
 
-- [ ] **Fix hardcoded colors** — Help modal titles use `#2c3e50` (light-only). Several components don't respect `data-theme="dark"`.
-- [ ] **Audit all CSS for theme variable usage** — Replace any remaining hardcoded color values.
+- [x] **Fix hardcoded colors** — Replaced 40+ hardcoded hex values with CSS custom properties. Added 7 sidebar-specific theme variables.
+- [x] **Audit all CSS for theme variable usage** — Badges, buttons, borders, alerts, sidebar, tables all now use theme variables.
 
 ### 5.3 Accessibility
 
 - [x] **Add ARIA live regions** — Added `aria-live="polite"` to stats, charts, and table sections; `aria-live="assertive"` to notifications
-- [ ] **Add `aria-sort` to sortable table headers** — Currently missing initial states.
+- [x] **Add `aria-sort` to sortable table headers** — Dynamic `aria-sort="none"` on init, updated to ascending/descending on sort.
 - [x] **Add `role="alert"` to notification toasts** — Added to both HTML and dynamic JS `showNotification()` function
-- [ ] **Wrap filter bar in `<form>` element** for semantic HTML.
+- [x] **Wrap filter bar in `<form>` element** — Already implemented with `role="search"` and form submission prevention.
 
 ### 5.4 Dashboard Customization
 
-- [ ] **Complete widget drag-to-reorder** — Currently "coming soon" (app.js:3461).
-- [ ] **Implement actual widget visibility toggling** — Function exists but doesn't work.
+- [x] **Complete widget drag-to-reorder** — HTML5 drag-and-drop with localStorage persistence, visual feedback during drag.
+- [x] **Implement actual widget visibility toggling** — Enhanced applyWidgetVisibility() to properly show/hide individual chart containers based on preferences.
 
 ### 5.5 Hardcoded Values to Configuration
 
@@ -229,17 +229,17 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 6.4 Operational Tooling
 
-- [ ] **Expand Makefile** — Add targets for: migrations, backup/restore, health checks, security scans, monitoring setup.
-- [ ] **Create restore.sh script** — backup.sh exists but no restore counterpart.
-- [ ] **Create database initialization script**.
-- [ ] **Create secrets rotation script**.
+- [x] **Expand Makefile** — Added targets: migrate, backup, restore, health, lint, seed, init-db, rotate-secrets with categorized help.
+- [x] **Create restore.sh script** — Already existed with --latest, --list, --verify flags and format support.
+- [x] **Create database initialization script** — scripts/init-db.sh with migrations, --create-admin, service readiness check.
+- [x] **Create secrets rotation script** — scripts/rotate-secrets.sh with --dry-run, --all, automatic backup and service restart.
 - [ ] **Document disaster recovery procedures**.
 
 ### 6.5 Nginx Production Config
 
-- [ ] **Add Cache-Control for index.html** — Currently no cache headers on HTML, so stale versions may be served.
-- [ ] **Add CSP header to frontend Nginx** — Backend middleware adds it but the Nginx frontend config doesn't.
-- [ ] **Add HSTS and Permissions-Policy** to Nginx.
+- [x] **Add Cache-Control for index.html** — HTML: no-cache, must-revalidate. Static assets: 1-year immutable cache.
+- [x] **Add CSP header to frontend Nginx** — Matching backend CSP with self, CDN sources, Chart.js exceptions.
+- [x] **Add HSTS and Permissions-Policy** to Nginx — HSTS with includeSubDomains, Permissions-Policy disabling unused features.
 
 ---
 
@@ -247,16 +247,16 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 7.1 Documentation Gaps
 
-- [ ] **API authentication docs** — Document how to obtain and use JWT tokens and API keys.
-- [ ] **Frontend auth integration guide** — How the (future) login UI works.
-- [ ] **Runbook for common operations** — Backup, restore, scale, rotate secrets.
-- [ ] **Architecture Decision Records** — Document why key choices were made (Holt-Winters over LSTM, vanilla JS over React, etc.).
+- [x] **API authentication docs** — docs/api-auth.md with JWT flow, API keys, 2FA, curl examples.
+- [x] **Frontend auth integration guide** — docs/frontend-auth.md with login flow, token management, role-based UI.
+- [x] **Runbook for common operations** — docs/runbook.md with backup/restore, scaling, secret rotation, troubleshooting.
+- [x] **Architecture Decision Records** — docs/adr/ with ADRs for vanilla JS, Holt-Winters, and Celery+APScheduler.
 
 ### 7.2 Developer Experience
 
-- [ ] **Add pre-commit hooks** — Automate black, isort, flake8, eslint on commit.
-- [ ] **Add `.env.example` validation** — Script to verify all required env vars are set.
-- [ ] **Add seed data script** — Generate sample data for development/demo.
+- [x] **Add pre-commit hooks** — .pre-commit-config.yaml with black, isort, flake8, eslint, trailing whitespace, private key detection.
+- [x] **Add `.env.example` validation** — scripts/check-env.sh comparing .env against .env.example with --strict mode.
+- [x] **Add seed data script** — Enhanced scripts/seed_data.py with users, alert rules, and 15 sample DMARC reports.
 
 ---
 

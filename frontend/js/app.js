@@ -1938,6 +1938,10 @@ let currentSort = { column: null, direction: 'none' };
 
 function setupTableSorting() {
     document.querySelectorAll('th.sortable').forEach(th => {
+        // Set initial aria-sort state
+        if (!th.hasAttribute('aria-sort')) {
+            th.setAttribute('aria-sort', 'none');
+        }
         th.addEventListener('click', () => {
             const column = th.dataset.sort;
             handleSort(column, th);
@@ -2065,7 +2069,11 @@ async function loadDashboard() {
     if (failures.length > 0) {
         console.error('Some dashboard components failed to load:', failures);
         const failedNames = failures.map(f => f.task.name).join(', ');
-        showNotification(`Some components failed to load: ${failedNames}. Click retry to try again.`, 'error');
+        showNotification(
+            `Some components failed to load: ${failedNames}`,
+            'error',
+            { retryCallback: loadDashboard, duration: 10000 }
+        );
     }
 
     // Load comparison data and render stat card enhancements
@@ -3929,7 +3937,7 @@ function renderCustomizeModalContent() {
 
     const intro = document.createElement('p');
     intro.className = 'customize-intro';
-    intro.textContent = 'Toggle widgets on or off. Drag to reorder (coming soon).';
+    intro.textContent = 'Toggle widgets on or off. Drag to reorder within each section.';
     body.appendChild(intro);
 
     // Group widgets by section
@@ -3940,9 +3948,28 @@ function renderCustomizeModalContent() {
         'table': 'Data Table'
     };
 
+    // Load saved widget order
+    const savedOrder = loadWidgetOrder();
+
     Object.entries(sections).forEach(([sectionId, sectionName]) => {
-        const widgets = defaultWidgets.filter(w => w.section === sectionId);
+        let widgets = defaultWidgets.filter(w => w.section === sectionId);
         if (widgets.length === 0) return;
+
+        // Apply saved order if available
+        if (savedOrder && savedOrder[sectionName]) {
+            const orderedWidgets = [];
+            savedOrder[sectionName].forEach(widgetId => {
+                const widget = widgets.find(w => w.id === widgetId);
+                if (widget) orderedWidgets.push(widget);
+            });
+            // Add any widgets not in saved order (new widgets)
+            widgets.forEach(widget => {
+                if (!orderedWidgets.includes(widget)) {
+                    orderedWidgets.push(widget);
+                }
+            });
+            widgets = orderedWidgets;
+        }
 
         const section = document.createElement('div');
         section.className = 'customize-section';
@@ -3960,6 +3987,13 @@ function renderCustomizeModalContent() {
             const item = document.createElement('div');
             item.className = 'customize-widget-item';
             item.dataset.widgetId = widget.id;
+            item.draggable = true;
+
+            // Add drag event handlers
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragover', handleDragOver);
+            item.addEventListener('drop', handleDrop);
+            item.addEventListener('dragend', handleDragEnd);
 
             const dragHandle = document.createElement('span');
             dragHandle.className = 'widget-drag-handle';
@@ -4045,6 +4079,12 @@ function applyWidgetVisibility() {
         reportsTable: '.table-section'
     };
 
+    // Determine which widgets should be visible
+    // If no saved preferences, use default pinned state
+    const visibleWidgets = pinnedWidgets.length === 0
+        ? defaultWidgets.filter(w => w.pinned).map(w => w.id)
+        : pinnedWidgets;
+
     // Toggle visibility for each widget
     Object.entries(widgetSelectors).forEach(([widgetId, selector]) => {
         const el = document.querySelector(selector);
@@ -4054,27 +4094,99 @@ function applyWidgetVisibility() {
         const target = el.tagName === 'CANVAS' ? el.closest('.chart-container') : el;
         if (!target) return;
 
-        const isVisible = pinnedWidgets.length === 0 || pinnedWidgets.includes(widgetId);
+        const isVisible = visibleWidgets.includes(widgetId);
         target.style.display = isVisible ? '' : 'none';
     });
 
     // Toggle primary charts section visibility
     const primaryCharts = document.querySelector('.charts-section-primary');
     if (primaryCharts) {
-        const hasPrimaryPinned = pinnedWidgets.length === 0 || pinnedWidgets.some(id =>
+        const hasPrimaryVisible = visibleWidgets.some(id =>
             ['timeline', 'domain', 'sourceIp', 'disposition'].includes(id)
         );
-        primaryCharts.style.display = hasPrimaryPinned ? '' : 'none';
+        primaryCharts.style.display = hasPrimaryVisible ? '' : 'none';
     }
 
     // Toggle secondary charts section visibility
     const secondaryCharts = document.querySelector('.charts-section-secondary');
     if (secondaryCharts) {
-        const hasSecondaryPinned = pinnedWidgets.length === 0 || pinnedWidgets.some(id =>
+        const hasSecondaryVisible = visibleWidgets.some(id =>
             ['alignment', 'compliance', 'failureTrend', 'topOrgs'].includes(id)
         );
-        secondaryCharts.style.display = hasSecondaryPinned ? '' : 'none';
+        secondaryCharts.style.display = hasSecondaryVisible ? '' : 'none';
     }
+}
+
+// Drag and drop state
+let draggedItem = null;
+
+function handleDragStart(e) {
+    draggedItem = e.currentTarget;
+    e.currentTarget.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+}
+
+function handleDragOver(e) {
+    if (e.preventDefault) {
+        e.preventDefault();
+    }
+    e.dataTransfer.dropEffect = 'move';
+
+    const target = e.currentTarget;
+    if (draggedItem && target !== draggedItem && target.classList.contains('customize-widget-item')) {
+        // Only allow reordering within the same section
+        const draggedSection = draggedItem.closest('.customize-widget-list');
+        const targetSection = target.closest('.customize-widget-list');
+
+        if (draggedSection === targetSection) {
+            const rect = target.getBoundingClientRect();
+            const midpoint = rect.top + rect.height / 2;
+
+            if (e.clientY < midpoint) {
+                target.parentNode.insertBefore(draggedItem, target);
+            } else {
+                target.parentNode.insertBefore(draggedItem, target.nextSibling);
+            }
+        }
+    }
+
+    return false;
+}
+
+function handleDrop(e) {
+    if (e.stopPropagation) {
+        e.stopPropagation();
+    }
+
+    // Save the new order to localStorage
+    saveWidgetOrder();
+
+    return false;
+}
+
+function handleDragEnd(e) {
+    e.currentTarget.style.opacity = '';
+    draggedItem = null;
+}
+
+function saveWidgetOrder() {
+    const widgetOrder = {};
+
+    // Collect the order of widgets in each section
+    document.querySelectorAll('.customize-widget-list').forEach(list => {
+        const section = list.closest('.customize-section');
+        const sectionTitle = section.querySelector('h3').textContent;
+        const items = Array.from(list.querySelectorAll('.customize-widget-item'));
+        widgetOrder[sectionTitle] = items.map(item => item.dataset.widgetId);
+    });
+
+    localStorage.setItem('dmarc-widget-order', JSON.stringify(widgetOrder));
+}
+
+function loadWidgetOrder() {
+    const savedOrder = localStorage.getItem('dmarc-widget-order');
+    return savedOrder ? JSON.parse(savedOrder) : null;
 }
 
 // ==========================================
@@ -4630,7 +4742,17 @@ async function uploadFiles() {
         });
 
         if (!response.ok) {
-            throw new Error(`Upload failed: HTTP ${response.status}`);
+            // Try to get detailed error message from response
+            let errorDetail = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.detail) {
+                    errorDetail = errorData.detail;
+                }
+            } catch (e) {
+                // If JSON parsing fails, use default message
+            }
+            throw new Error(`Upload failed: ${errorDetail}`);
         }
 
         const data = await response.json();
@@ -4691,16 +4813,45 @@ function formatFileSize(bytes) {
 }
 
 // Show notification
-function showNotification(message, type = 'success') {
+function showNotification(message, type = 'success', options = {}) {
     const notification = document.getElementById('notification');
-    notification.textContent = message;
+
+    // Clear any existing content and buttons
+    while (notification.firstChild) {
+        notification.removeChild(notification.firstChild);
+    }
+
+    // Add message text
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    notification.appendChild(messageSpan);
+
+    // Add retry button if callback provided
+    if (options.retryCallback) {
+        const retryBtn = document.createElement('button');
+        retryBtn.textContent = 'Retry';
+        retryBtn.className = 'notification-retry-btn';
+        retryBtn.style.marginLeft = '10px';
+        retryBtn.style.padding = '4px 12px';
+        retryBtn.style.border = 'none';
+        retryBtn.style.borderRadius = '4px';
+        retryBtn.style.cursor = 'pointer';
+        retryBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+        retryBtn.style.color = 'inherit';
+        retryBtn.onclick = () => {
+            notification.className = 'notification';
+            options.retryCallback();
+        };
+        notification.appendChild(retryBtn);
+    }
+
     notification.className = `notification ${type} show`;
     notification.setAttribute('role', 'alert');
     notification.setAttribute('aria-live', 'assertive');
 
     setTimeout(() => {
         notification.className = 'notification';
-    }, 5000);
+    }, options.duration || 5000);
 }
 
 // Format date range
