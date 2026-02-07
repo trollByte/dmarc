@@ -202,10 +202,10 @@
 
         _loadRecords: function() {
             var self = this;
-            fetch('/api/bimi/records', { headers: getAuthHeaders() })
+            fetch('/api/bimi/domains', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    var records = Array.isArray(data) ? data : (data.records || []);
+                    var records = Array.isArray(data) ? data : (data.domains || data.records || []);
                     self._renderRecords(records);
                 })
                 .catch(function() { notify('Failed to load BIMI records', 'error'); });
@@ -213,7 +213,7 @@
 
         _loadStatus: function() {
             var self = this;
-            fetch('/api/bimi/status', { headers: getAuthHeaders() })
+            fetch('/api/bimi/domains', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) { self._renderStatus(data); })
                 .catch(function() {});
@@ -229,7 +229,7 @@
             var withBimi = 0;
             var withVmc = 0;
             domains.forEach(function(d) {
-                if (d.has_bimi) withBimi++;
+                if (d.has_bimi_record || d.has_bimi) withBimi++;
                 if (d.vmc_valid || d.vmc_status === 'valid') withVmc++;
             });
 
@@ -286,7 +286,7 @@
 
                 var tdHas = document.createElement('td');
                 var hasBadge = document.createElement('span');
-                if (rec.has_bimi || rec.bimi_found) {
+                if (rec.has_bimi_record || rec.has_bimi || rec.bimi_found) {
                     hasBadge.className = 'badge badge-success';
                     hasBadge.textContent = 'Yes';
                 } else {
@@ -321,12 +321,12 @@
                 viewBtn.addEventListener('click', function() { self._showDetail(rec); });
                 tdActions.appendChild(viewBtn);
 
-                if (isAdmin() && rec.id) {
+                if (isAdmin() && rec.domain) {
                     var delBtn = document.createElement('button');
                     delBtn.className = 'btn-ghost btn-sm';
                     delBtn.style.color = 'var(--accent-danger)';
                     delBtn.textContent = 'Delete';
-                    delBtn.addEventListener('click', function() { self._deleteRecord(rec.id); });
+                    delBtn.addEventListener('click', function() { self._deleteRecord(rec.domain); });
                     tdActions.appendChild(delBtn);
                 }
 
@@ -355,7 +355,7 @@
 
             var fields = [
                 ['Domain', rec.domain],
-                ['Has BIMI', rec.has_bimi || rec.bimi_found ? 'Yes' : 'No'],
+                ['Has BIMI', rec.has_bimi_record || rec.has_bimi || rec.bimi_found ? 'Yes' : 'No'],
                 ['Logo URL', rec.logo_url || rec.logo || '-'],
                 ['VMC Status', rec.vmc_status || '-'],
                 ['VMC URL', rec.vmc_url || '-'],
@@ -412,7 +412,7 @@
             var input = this._els.addDomainInput;
             if (!input || !input.value.trim()) return;
 
-            fetch('/api/bimi/records', {
+            fetch('/api/bimi/domains', {
                 method: 'POST',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, getAuthHeaders()),
                 body: JSON.stringify({ domain: input.value.trim() })
@@ -430,10 +430,10 @@
             .catch(function(err) { notify(err.message, 'error'); });
         },
 
-        _deleteRecord: function(id) {
+        _deleteRecord: function(domain) {
             if (!confirm('Delete this BIMI record?')) return;
             var self = this;
-            fetch('/api/bimi/records/' + encodeURIComponent(id), {
+            fetch('/api/bimi/domains/' + encodeURIComponent(domain), {
                 method: 'DELETE', headers: getAuthHeaders()
             })
             .then(function(r) {
@@ -466,7 +466,7 @@
             loading.textContent = 'Validating...';
             resultEl.appendChild(loading);
 
-            fetch('/api/bimi/validation/' + encodeURIComponent(input.value.trim()), { headers: getAuthHeaders() })
+            fetch('/api/bimi/check/' + encodeURIComponent(input.value.trim()), { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) { self._renderValidation(resultEl, data); })
                 .catch(function() {
@@ -482,16 +482,19 @@
             clearElement(el);
 
             var statusBadge = document.createElement('span');
-            var valid = data.valid || data.is_valid;
+            var valid = data.status === 'valid' || data.valid || data.is_valid;
             statusBadge.className = 'badge ' + (valid ? 'badge-success' : 'badge-danger');
-            statusBadge.textContent = valid ? 'Valid' : 'Invalid';
+            statusBadge.textContent = data.status ? data.status.charAt(0).toUpperCase() + data.status.slice(1) : (valid ? 'Valid' : 'Invalid');
             el.appendChild(statusBadge);
 
+            var logoUrl = (data.record && data.record.logo_url) || data.logo_url || '-';
+            var vmcStatus = (data.vmc_validation && data.vmc_validation.is_valid) ? 'Valid' : (data.vmc_validation ? 'Invalid' : (data.vmc_status || 'Not found'));
             var fields = [
                 ['Domain', data.domain],
-                ['Has BIMI Record', data.has_bimi_record ? 'Yes' : 'No'],
-                ['Logo URL', data.logo_url || '-'],
-                ['VMC', data.vmc_status || (data.has_vmc ? 'Found' : 'Not found')]
+                ['Has BIMI Record', (data.has_record || data.has_bimi_record) ? 'Yes' : 'No'],
+                ['DMARC Compliant', data.dmarc_compliant ? 'Yes' : 'No'],
+                ['Logo URL', logoUrl],
+                ['VMC', vmcStatus]
             ];
 
             fields.forEach(function(pair) {
@@ -515,6 +518,32 @@
                     var p = document.createElement('p');
                     p.style.cssText = 'color:var(--accent-danger);margin:2px 0;';
                     p.textContent = typeof issue === 'string' ? issue : (issue.message || JSON.stringify(issue));
+                    el.appendChild(p);
+                });
+            }
+
+            if (data.warnings && data.warnings.length > 0) {
+                var warnTitle = document.createElement('h4');
+                warnTitle.textContent = 'Warnings';
+                warnTitle.style.marginTop = '8px';
+                el.appendChild(warnTitle);
+                data.warnings.forEach(function(w) {
+                    var p = document.createElement('p');
+                    p.style.cssText = 'color:var(--accent-warning, #f39c12);margin:2px 0;';
+                    p.textContent = typeof w === 'string' ? w : (w.message || JSON.stringify(w));
+                    el.appendChild(p);
+                });
+            }
+
+            if (data.recommendations && data.recommendations.length > 0) {
+                var recTitle = document.createElement('h4');
+                recTitle.textContent = 'Recommendations';
+                recTitle.style.marginTop = '8px';
+                el.appendChild(recTitle);
+                data.recommendations.forEach(function(r) {
+                    var p = document.createElement('p');
+                    p.style.cssText = 'color:var(--text-secondary);margin:2px 0;';
+                    p.textContent = typeof r === 'string' ? r : (r.message || JSON.stringify(r));
                     el.appendChild(p);
                 });
             }

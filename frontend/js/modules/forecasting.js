@@ -218,7 +218,7 @@
                 genBtn.textContent = 'Generating...';
             }
 
-            fetch(API_BASE + '/analytics/forecasting/forecast?days=' + days + '&forecast_days=' + forecastDays)
+            fetch(API_BASE + '/analytics/forecast/volume?history_days=' + days + '&forecast_days=' + forecastDays)
                 .then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
@@ -480,15 +480,30 @@
             var loading = document.getElementById('forecast-comparison-loading');
             if (loading) loading.hidden = false;
 
-            fetch(API_BASE + '/analytics/forecasting/compare?period1_days=30&period2_days=30')
+            fetch(API_BASE + '/analytics/forecast/summary')
                 .then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 })
                 .then(function(data) {
                     if (loading) loading.hidden = true;
-                    self._renderComparisonCards(data);
-                    self._renderComparisonChart(data);
+                    // Adapt forecast/summary response to comparison card format
+                    var summary = data.summary || {};
+                    var compData = {
+                        period1: {
+                            avg: summary.historical_avg_volume,
+                            total: summary.historical_avg_volume ? summary.historical_avg_volume * 7 : null,
+                            trend: 'historical'
+                        },
+                        period2: {
+                            avg: summary.avg_predicted_volume,
+                            total: summary.avg_predicted_volume ? summary.avg_predicted_volume * 7 : null,
+                            trend: summary.trend || 'unknown'
+                        },
+                        change_pct: summary.volume_change_percent
+                    };
+                    self._renderComparisonCards(compData);
+                    self._renderComparisonChart(compData);
                 })
                 .catch(function(err) {
                     if (loading) {

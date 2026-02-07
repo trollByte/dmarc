@@ -173,9 +173,28 @@
 
         _loadSummary: function() {
             var self = this;
-            fetch('/api/tls-rpt/summary?days=30', { headers: getAuthHeaders() })
+            fetch('/api/tls-rpt/reports?days=30', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
-                .then(function(data) { self._renderSummary(data); })
+                .then(function(data) {
+                    var reports = Array.isArray(data) ? data : (data.reports || data.items || []);
+                    // Derive summary stats from reports list
+                    var totalReports = reports.length;
+                    var totalFailures = 0;
+                    var domainsSet = {};
+                    var totalSessions = 0;
+                    reports.forEach(function(r) {
+                        totalFailures += (r.failed_sessions || 0);
+                        totalSessions += (r.successful_sessions || 0) + (r.failed_sessions || 0);
+                        if (r.policy_domain) domainsSet[r.policy_domain] = true;
+                    });
+                    var failureRate = totalSessions > 0 ? (totalFailures / totalSessions) * 100 : 0;
+                    self._renderSummary({
+                        total_reports: totalReports,
+                        total_failures: totalFailures,
+                        domains_reporting: Object.keys(domainsSet).length,
+                        failure_rate: failureRate
+                    });
+                })
                 .catch(function() {});
         },
 
@@ -309,7 +328,7 @@
 
         _loadTimeline: function() {
             var self = this;
-            fetch('/api/tls-rpt/timeline?days=30', { headers: getAuthHeaders() })
+            fetch('/api/tls-rpt/trends?days=30', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) { self._renderTimeline(data); })
                 .catch(function() {});
@@ -325,7 +344,7 @@
 
             items.forEach(function(item) {
                 labels.push(item.date || item.day || '');
-                failures.push(item.failures || item.failure_count || 0);
+                failures.push(item.failed_sessions || item.failures || item.failure_count || 0);
             });
 
             var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -426,10 +445,19 @@
 
         _loadDomains: function() {
             var self = this;
-            fetch('/api/tls-rpt/domains', { headers: getAuthHeaders() })
+            fetch('/api/tls-rpt/reports?days=90', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
-                    var domains = Array.isArray(data) ? data : (data.domains || []);
+                    var reports = Array.isArray(data) ? data : (data.reports || data.items || []);
+                    // Extract unique domains with report counts
+                    var domainCounts = {};
+                    reports.forEach(function(r) {
+                        var d = r.policy_domain || r.domain;
+                        if (d) domainCounts[d] = (domainCounts[d] || 0) + 1;
+                    });
+                    var domains = Object.keys(domainCounts).map(function(d) {
+                        return { domain: d, report_count: domainCounts[d] };
+                    });
                     self._renderDomainsList(domains);
                 })
                 .catch(function() {});

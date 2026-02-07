@@ -592,7 +592,7 @@
             loadingTr.appendChild(loadingTd);
             this._els.logsTbody.appendChild(loadingTr);
 
-            fetch('/api/webhooks/' + id + '/logs?limit=50', { headers: getAuthHeaders() })
+            fetch('/api/webhooks/' + id + '/deliveries?limit=50', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     var logs = Array.isArray(data) ? data : (data.logs || []);
@@ -651,11 +651,12 @@
                 tr.appendChild(tdCode);
 
                 var tdRespTime = document.createElement('td');
-                tdRespTime.textContent = log.response_time ? log.response_time + 'ms' : '-';
+                var respTime = log.response_time || log.duration_ms;
+                tdRespTime.textContent = respTime ? respTime + 'ms' : '-';
                 tr.appendChild(tdRespTime);
 
                 var tdRetry = document.createElement('td');
-                tdRetry.textContent = log.retry_count != null ? log.retry_count : (log.retries != null ? log.retries : '-');
+                tdRetry.textContent = log.retry_count != null ? log.retry_count : (log.attempt_number != null ? log.attempt_number : (log.retries != null ? log.retries : '-'));
                 tr.appendChild(tdRetry);
 
                 tbody.appendChild(tr);

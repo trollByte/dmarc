@@ -407,7 +407,7 @@
             var payload = {
                 domain: domain,
                 policy: policy || 'none',
-                percentage: pct
+                pct: pct
             };
             if (sp) payload.subdomain_policy = sp;
             if (rua.length) payload.rua = rua;
@@ -415,7 +415,7 @@
             if (adkim) payload.adkim = adkim;
             if (aspf) payload.aspf = aspf;
 
-            fetch(API_BASE + '/generator/dmarc-record', {
+            fetch(API_BASE + '/generator/dmarc', {
                 method: 'POST',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, this._getHeaders()),
                 body: JSON.stringify(payload)
@@ -426,10 +426,10 @@
             })
             .then(function(data) {
                 var preview = document.getElementById('gen-dmarc-preview');
-                if (preview) preview.textContent = data.record || '';
+                if (preview) preview.textContent = data.record_value || data.record || '';
                 var instructions = document.getElementById('gen-dmarc-instructions');
                 if (instructions) {
-                    instructions.textContent = 'Add this TXT record to _dmarc.' + domain;
+                    instructions.textContent = 'Add this TXT record to ' + (data.record_name || '_dmarc.' + domain);
                     instructions.hidden = false;
                 }
                 showNotification('DMARC record generated', 'success');
@@ -449,13 +449,30 @@
             var mechanisms = this._getSpfMechanisms();
             var allQualifier = this._getRadioVal('gen-spf-all') || '~all';
 
+            // Build payload matching backend SPFGenerateRequest schema
             var payload = {
                 domain: domain,
-                mechanisms: mechanisms,
-                all_qualifier: allQualifier
+                all_mechanism: allQualifier
             };
+            var includes = [];
+            var ip4s = [];
+            var ip6s = [];
+            var hasA = false;
+            var hasMx = false;
+            mechanisms.forEach(function(m) {
+                if (m.type === 'include') includes.push(m.value);
+                else if (m.type === 'ip4') ip4s.push(m.value);
+                else if (m.type === 'ip6') ip6s.push(m.value);
+                else if (m.type === 'a') hasA = true;
+                else if (m.type === 'mx') hasMx = true;
+            });
+            if (includes.length) payload.include = includes;
+            if (ip4s.length) payload.ip4 = ip4s;
+            if (ip6s.length) payload.ip6 = ip6s;
+            if (hasA) payload.a = true;
+            if (hasMx) payload.mx = true;
 
-            fetch(API_BASE + '/generator/spf-record', {
+            fetch(API_BASE + '/generator/spf', {
                 method: 'POST',
                 headers: Object.assign({ 'Content-Type': 'application/json' }, this._getHeaders()),
                 body: JSON.stringify(payload)
@@ -466,10 +483,10 @@
             })
             .then(function(data) {
                 var preview = document.getElementById('gen-spf-preview');
-                if (preview) preview.textContent = data.record || '';
+                if (preview) preview.textContent = data.record_value || data.record || '';
                 var instructions = document.getElementById('gen-spf-instructions');
                 if (instructions) {
-                    instructions.textContent = 'Add this TXT record to ' + domain;
+                    instructions.textContent = 'Add this TXT record to ' + (data.record_name || domain);
                     instructions.hidden = false;
                 }
                 showNotification('SPF record generated', 'success');

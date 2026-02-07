@@ -496,7 +496,7 @@
 
         _runNow: function(id) {
             var self = this;
-            fetch(API_BASE + '/scheduled-reports/' + encodeURIComponent(id) + '/execute', { method: 'POST' })
+            fetch(API_BASE + '/scheduled-reports/' + encodeURIComponent(id) + '/run', { method: 'POST' })
                 .then(function(r) {
                     if (r.ok) {
                         if (typeof showNotification === 'function') {
@@ -559,7 +559,7 @@
 
             afterRow.parentNode.insertBefore(historyRow, afterRow.nextSibling);
 
-            fetch(API_BASE + '/scheduled-reports/' + encodeURIComponent(reportId) + '/history')
+            fetch(API_BASE + '/scheduled-reports/' + encodeURIComponent(reportId) + '/logs')
                 .then(function(r) { return r.ok ? r.json() : []; })
                 .then(function(data) {
                     var items = Array.isArray(data) ? data : [];
@@ -607,8 +607,9 @@
 
                         var tdError = document.createElement('td');
                         tdError.style.cssText = 'color: var(--accent-danger); max-width: 300px; overflow: hidden; text-overflow: ellipsis;';
-                        tdError.textContent = item.error || '-';
-                        tdError.title = item.error || '';
+                        var errorText = item.error || item.error_message || '-';
+                        tdError.textContent = errorText;
+                        tdError.title = errorText !== '-' ? errorText : '';
                         tr.appendChild(tdError);
 
                         hBody.appendChild(tr);

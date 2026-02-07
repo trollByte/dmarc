@@ -205,16 +205,21 @@
 
             this._showLoading();
 
-            // Fetch policy status to populate domain filter + table, then recommendations
+            var daysSelect = document.getElementById('advisorDaysSelect');
+            var days = daysSelect ? daysSelect.value : '30';
+
+            // Fetch domain health (for policy table) + recommendations in parallel
             Promise.all([
-                fetch(API_BASE + '/advisor/policy-status').then(function(r) {
+                fetch(API_BASE + '/advisor/domains?days=' + days).then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 }),
                 this._fetchRecommendations()
             ]).then(function(results) {
-                var policyData = Array.isArray(results[0]) ? results[0] : [];
-                var recsData = Array.isArray(results[1]) ? results[1] : [];
+                var domainsResp = results[0];
+                var policyData = domainsResp && Array.isArray(domainsResp.domains) ? domainsResp.domains : (Array.isArray(domainsResp) ? domainsResp : []);
+                var recsResp = results[1];
+                var recsData = recsResp && Array.isArray(recsResp.recommendations) ? recsResp.recommendations : (Array.isArray(recsResp) ? recsResp : []);
 
                 self.policyStatus = policyData;
                 self.recommendations = recsData;
@@ -253,7 +258,7 @@
             if (recsList) recsList.textContent = 'Loading recommendations...';
 
             this._fetchRecommendations().then(function(data) {
-                self.recommendations = Array.isArray(data) ? data : [];
+                self.recommendations = data && Array.isArray(data.recommendations) ? data.recommendations : (Array.isArray(data) ? data : []);
                 self._renderRecommendations(self.recommendations);
             }).catch(function(err) {
                 console.error('Error loading recommendations:', err);

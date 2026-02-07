@@ -214,20 +214,21 @@
             // Show loading states
             this._showLoading();
 
-            // Fetch comparison data and historical scores in parallel
+            // Fetch domain health data and overall health in parallel
             Promise.all([
-                fetch(API_BASE + '/advisor/comparison?days=' + days).then(function(r) {
+                fetch(API_BASE + '/advisor/domains?days=' + days).then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 }),
-                fetch(API_BASE + '/advisor/historical-scores?days=' + days).then(function(r) {
+                fetch(API_BASE + '/advisor/health?days=' + days).then(function(r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 })
             ]).then(function(results) {
-                var comparison = results[0];
+                var domainsResp = results[0];
                 var historical = results[1];
-                self.comparisonData = Array.isArray(comparison) ? comparison : [];
+                var domains = domainsResp && Array.isArray(domainsResp.domains) ? domainsResp.domains : (Array.isArray(domainsResp) ? domainsResp : []);
+                self.comparisonData = domains;
                 self._renderSummary(self.comparisonData);
                 self._renderCards(self.comparisonData);
                 self._renderHistoricalChart(historical);

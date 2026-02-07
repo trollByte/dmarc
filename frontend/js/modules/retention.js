@@ -516,7 +516,7 @@
         _executePolicy: function(id, name) {
             if (!confirm('Execute retention policy "' + (name || id) + '"? This may permanently delete data.')) return;
             var self = this;
-            fetch('/api/retention/execute/' + id, { method: 'POST', headers: getAuthHeaders() })
+            fetch('/api/retention/policies/' + id + '/execute', { method: 'POST', headers: getAuthHeaders() })
                 .then(function(r) {
                     if (!r.ok) throw new Error('Failed');
                     return r.json();
@@ -536,7 +536,7 @@
             var btn = this._els.execAllBtn;
             if (btn) { btn.disabled = true; btn.textContent = 'Executing...'; }
 
-            fetch('/api/retention/execute-all', { method: 'POST', headers: getAuthHeaders() })
+            fetch('/api/retention/execute', { method: 'POST', headers: getAuthHeaders() })
                 .then(function(r) {
                     if (!r.ok) throw new Error('Failed');
                     return r.json();
@@ -562,7 +562,7 @@
             loading.textContent = 'Running dry run...';
             panel.appendChild(loading);
 
-            fetch('/api/retention/dry-run/' + id, { method: 'POST', headers: getAuthHeaders() })
+            fetch('/api/retention/policies/' + id + '/preview', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
                 .then(function(data) { self._renderDryRun(panel, data); })
                 .catch(function() {
@@ -590,9 +590,10 @@
             panel.appendChild(titleRow);
 
             var fields = [
-                ['Would Delete', (data.would_delete || 0).toLocaleString() + ' records'],
-                ['Oldest Record', data.oldest_record ? new Date(data.oldest_record).toLocaleString() : '-'],
-                ['Newest Record', data.newest_record ? new Date(data.newest_record).toLocaleString() : '-']
+                ['Would Delete', ((data.records_to_delete != null ? data.records_to_delete : data.would_delete) || 0).toLocaleString() + ' records'],
+                ['Target', data.target || '-'],
+                ['Cutoff Date', data.cutoff_date ? new Date(data.cutoff_date).toLocaleString() : '-'],
+                ['Retention Days', data.retention_days || '-']
             ];
 
             fields.forEach(function(pair) {
@@ -668,9 +669,18 @@
 
         _loadForecast: function() {
             var self = this;
-            fetch('/api/retention/forecast', { headers: getAuthHeaders() })
+            fetch('/api/retention/stats', { headers: getAuthHeaders() })
                 .then(function(r) { return r.json(); })
-                .then(function(data) { self._renderForecast(data); })
+                .then(function(data) {
+                    // Adapt stats response to forecast chart format
+                    // Stats returns: { policies: {}, total_records_deleted: N, data_sizes: { target: size } }
+                    var sizes = data.data_sizes || {};
+                    var items = [];
+                    Object.keys(sizes).forEach(function(target) {
+                        items.push({ date: target, storage_mb: Math.round(sizes[target] / (1024 * 1024) * 100) / 100 });
+                    });
+                    self._renderForecast(items);
+                })
                 .catch(function() {});
         },
 
