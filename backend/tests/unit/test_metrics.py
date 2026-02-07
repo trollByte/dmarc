@@ -74,8 +74,8 @@ class TestHistogramBuckets:
 
     def test_http_duration_bucket_boundaries(self):
         """HTTP histogram has the expected bucket thresholds"""
-        expected = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
-        assert HTTP_REQUEST_DURATION._upper_bounds == expected
+        expected = [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf")]
+        assert list(HTTP_REQUEST_DURATION._upper_bounds) == expected
 
     def test_http_duration_records_observation(self):
         """Histogram observation updates sum"""

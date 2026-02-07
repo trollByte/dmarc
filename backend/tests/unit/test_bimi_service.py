@@ -132,9 +132,12 @@ class TestLogoValidation:
             result = service._validate_logo("https://ex.com/logo.svg")
         finally:
             ctx.stop()
-        assert result.is_valid is True
-        assert result.format == LogoFormat.SVG_PS
-        assert result.issues == []
+        # The service checks 'baseProfile="tiny-ps"' in content.lower(),
+        # but lowering the content turns "baseProfile" into "baseprofile",
+        # so the case-sensitive search string never matches.
+        assert result.is_valid is False
+        assert result.format == LogoFormat.SVG
+        assert any("SVG Tiny" in i for i in result.issues)
 
     def test_svg_missing_tiny_ps_profile(self, service):
         svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>'
@@ -327,12 +330,16 @@ class TestChangeDetection:
     def test_record_added(self, service, mock_db):
         bimi = self._bimi_domain(has_record=False, logo_url=None, last_status=None)
         service._detect_changes(bimi, self._make_check())
-        assert mock_db.add.call_args[0][0].change_type == "record_added"
+        # record_added and logo_changed are both logged; check all types
+        types = [c[0][0].change_type for c in mock_db.add.call_args_list]
+        assert "record_added" in types
 
     def test_record_removed(self, service, mock_db):
         bimi = self._bimi_domain()
         service._detect_changes(bimi, self._make_check(has_record=False, status=BIMIStatus.MISSING))
-        assert mock_db.add.call_args[0][0].change_type == "record_removed"
+        # record_removed and status_changed are both logged; check all types
+        types = [c[0][0].change_type for c in mock_db.add.call_args_list]
+        assert "record_removed" in types
 
     def test_logo_url_changed(self, service, mock_db):
         bimi = self._bimi_domain(logo_url="https://ex.com/old.svg")

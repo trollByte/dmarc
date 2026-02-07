@@ -280,7 +280,8 @@ class TestReportDeduplication:
 
         service.store_report(data)
 
-        stored = mock_db.add.call_args[0][0]
+        # First db.add call is the TLSReport; subsequent calls are for failure summaries
+        stored = mock_db.add.call_args_list[0][0][0]
         assert stored.report_hash == expected_hash
 
     def test_different_data_produces_different_hash(self, service):
@@ -480,7 +481,7 @@ class TestDNSRecordChecking:
     def service(self, mock_db):
         return TLSRPTService(mock_db)
 
-    @patch("app.services.tls_rpt_service.dns.resolver.Resolver")
+    @patch("dns.resolver.Resolver")
     def test_check_valid_tlsrpt_record(self, mock_resolver_cls, service):
         """Test checking a valid TLS-RPT DNS record"""
         mock_resolver = mock_resolver_cls.return_value
@@ -495,7 +496,7 @@ class TestDNSRecordChecking:
         assert result["record"] == "v=TLSRPTv1; rua=mailto:tls@example.com"
         assert "mailto:tls@example.com" in result["rua"]
 
-    @patch("app.services.tls_rpt_service.dns.resolver.Resolver")
+    @patch("dns.resolver.Resolver")
     def test_check_record_multiple_rua(self, mock_resolver_cls, service):
         """Test parsing multiple rua URIs from a single record"""
         mock_resolver = mock_resolver_cls.return_value
@@ -511,7 +512,7 @@ class TestDNSRecordChecking:
         assert "mailto:tls@example.com" in result["rua"]
         assert "https://report.example.com/api" in result["rua"]
 
-    @patch("app.services.tls_rpt_service.dns.resolver.Resolver")
+    @patch("dns.resolver.Resolver")
     def test_check_record_not_found(self, mock_resolver_cls, service):
         """Test handling when no TLS-RPT record exists"""
         mock_resolver = mock_resolver_cls.return_value
