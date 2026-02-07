@@ -32,6 +32,9 @@ from app.models import (
 
 logger = logging.getLogger(__name__)
 
+# Signature embedded in every model bundle to verify it was created by this application.
+_MODEL_SIGNATURE = "dmarc-dashboard-ml-v1"
+
 
 class MLAnalyticsService:
     """
@@ -112,6 +115,7 @@ class MLAnalyticsService:
 
         # Serialize model and scaler together (SAFE: self-trained model only)
         model_bundle = {
+            "_signature": _MODEL_SIGNATURE,
             "model": iso_forest,
             "scaler": scaler,
             "feature_names": self.feature_names,
@@ -353,7 +357,12 @@ class MLAnalyticsService:
         return np.array(X), ip_data, date_range
 
     def _load_model(self, model_id: Optional[str] = None) -> Tuple[Optional[MLModel], Optional[Dict]]:
-        """Load model from database (SAFE: only self-trained models)"""
+        """Load model from database with validation.
+
+        Only self-trained models are stored, but we still validate the
+        deserialized bundle to guard against data corruption or accidental
+        misuse.
+        """
         if model_id:
             model = self.db.query(MLModel).filter(MLModel.id == model_id).first()
         else:
@@ -362,8 +371,70 @@ class MLAnalyticsService:
         if not model:
             return None, None
 
-        # Deserialize model bundle (SAFE: self-trained only)
-        model_bundle = pickle.loads(model.model_data)
+        logger.info(
+            "Loading ML model: id=%s, name=%s, type=%s",
+            model.id, model.model_name, model.model_type
+        )
+
+        # Deserialize model bundle with safety checks
+        # SAFE: only self-trained models are stored in the database
+        try:
+            model_bundle = pickle.loads(model.model_data)
+        except Exception as exc:
+            logger.error(
+                "Failed to deserialize model %s (%s): %s",
+                model.id, model.model_name, exc
+            )
+            return None, None
+
+        # Validate the deserialized object is the expected dict structure
+        if not isinstance(model_bundle, dict):
+            logger.error(
+                "Model %s (%s): deserialized object is %s, expected dict",
+                model.id, model.model_name, type(model_bundle).__name__
+            )
+            return None, None
+
+        # Verify application signature (models saved before this change
+        # won't have the key, so we only reject bundles with a *wrong*
+        # signature rather than a missing one).
+        bundle_sig = model_bundle.get("_signature")
+        if bundle_sig is not None and bundle_sig != _MODEL_SIGNATURE:
+            logger.error(
+                "Model %s (%s): invalid signature '%s'",
+                model.id, model.model_name, bundle_sig
+            )
+            return None, None
+
+        # Verify required keys are present
+        required_keys = {"model", "scaler", "feature_names"}
+        missing_keys = required_keys - set(model_bundle.keys())
+        if missing_keys:
+            logger.error(
+                "Model %s (%s): missing required keys: %s",
+                model.id, model.model_name, missing_keys
+            )
+            return None, None
+
+        # Type-check the core objects
+        if not isinstance(model_bundle["model"], IsolationForest):
+            logger.error(
+                "Model %s (%s): 'model' is %s, expected IsolationForest",
+                model.id, model.model_name, type(model_bundle["model"]).__name__
+            )
+            return None, None
+
+        if not isinstance(model_bundle["scaler"], StandardScaler):
+            logger.error(
+                "Model %s (%s): 'scaler' is %s, expected StandardScaler",
+                model.id, model.model_name, type(model_bundle["scaler"]).__name__
+            )
+            return None, None
+
+        logger.info(
+            "Model loaded successfully: id=%s, name=%s",
+            model.id, model.model_name
+        )
 
         return model, model_bundle
 

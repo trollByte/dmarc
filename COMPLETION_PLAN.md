@@ -14,21 +14,21 @@ The core DMARC ingestion, parsing, storage, and visualization pipeline works. En
 
 ### 1.1 Security Hardening
 
-- [ ] **Remove hardcoded credentials from docker-compose.yml** — Database password `dmarc:dmarc` is committed to source. Use `.env` file references or Docker secrets.
-- [ ] **Require JWT_SECRET_KEY at startup** — Currently defaults to empty string (`config.py:49`). Add startup validation that raises a fatal error if unset.
-- [ ] **Secure Redis** — Exposed on port 6379 with no authentication. Remove port mapping in production compose, add `--requirepass`.
-- [ ] **Restrict database port** — PostgreSQL exposed on 5433 with default creds. Remove port mapping in production compose.
-- [ ] **Secure Flower dashboard** — Exposed on port 5555 with no auth. Add `--basic_auth` or reverse proxy it behind nginx auth.
-- [ ] **Fix CSP headers** — `unsafe-inline` and `unsafe-eval` in script-src defeats XSS protection (`middleware/security.py:46-47`). Refactor frontend to use external scripts with nonces.
-- [ ] **Validate ML model deserialization** — `ml_analytics.py` deserializes trained models without verification. Add model signature verification or use `joblib` with validation. (Note: currently safe since models are self-trained, but should be hardened.)
-- [ ] **Add resource limits to Docker containers** — No CPU/memory limits means a single service can starve others.
+- [x] **Remove hardcoded credentials from docker-compose.yml** — Updated .env.example with security section documenting all credential variables (POSTGRES_USER/PASSWORD, REDIS_PASSWORD, FLOWER_BASIC_AUTH, JWT_SECRET_KEY). docker-compose.yml already uses env var substitution.
+- [x] **Require JWT_SECRET_KEY at startup** — Added startup validation in main.py lifespan: raises RuntimeError in production if JWT key is empty/insecure, warns in debug mode.
+- [x] **Secure Redis** — Already configured: --requirepass in docker-compose.yml, ports removed in docker-compose.prod.yml.
+- [x] **Restrict database port** — Already configured: ports removed in docker-compose.prod.yml via `ports: !reset []`.
+- [x] **Secure Flower dashboard** — Already configured: --basic-auth in docker-compose.yml, ports removed in docker-compose.prod.yml.
+- [x] **Fix CSP headers** — Removed unsafe-inline from script-src, moved 2 inline event handlers to app.js. Kept unsafe-inline in style-src (required by Chart.js/Leaflet). unsafe-eval was never present.
+- [x] **Validate ML model deserialization** — Added model signature constant, type checking (IsolationForest, StandardScaler), required key validation, and logging to ml_analytics.py.
+- [x] **Add resource limits to Docker containers** — Already configured: all services have CPU/memory limits in docker-compose.yml.
 
 ### 1.2 Broken Frontend Features
 
-- [ ] **Add missing HTML elements for record detail view** — `app.js` lines 4212-4338 reference `#recordDetail`, `#recordsTable`, `#recordsTableBody`, `#recordsPagination`, `#recordsInfo`, `#recordDetailContent` — none exist in `index.html`.
-- [ ] **Add missing CSS classes** — `.component-error`, `.component-error-icon`, `.component-error-retry`, `.input-wrapper`, `.input-validation-icon`, `.valid-icon`, `.invalid-icon`, `.input-error` are used in JS but not defined in CSS.
-- [ ] **Fix widget visibility toggling** — `applyWidgetVisibility()` (line 3562) only identifies widgets, doesn't actually hide/show them.
-- [ ] **Wire up unused functions** — `calculatePeriodComparison()` (line 3055) and `renderComparisonIndicator()` (line 3074) are defined but never called.
+- [x] **Add missing HTML elements for record detail view** — Already present: #recordDetail, #recordsTable, #recordsTableBody, #recordsPagination, #recordsInfo, #recordDetailContent all exist in index.html inside #tab-records.
+- [x] **Add missing CSS classes** — Already present: all classes (.component-error, .input-wrapper, .input-validation-icon, .valid-icon, .invalid-icon, .input-error) exist in styles.css with theme variable support.
+- [x] **Fix widget visibility toggling** — Added primary charts section toggle to applyWidgetVisibility(). Now hides/shows both primary and secondary chart sections based on pinned widgets.
+- [x] **Wire up unused functions** — Connected loadComparisonData(), renderStatCardSparklines(), renderPeriodComparisons() in loadDashboard() after main tasks complete.
 
 ### 1.3 Implement Password Reset Email
 

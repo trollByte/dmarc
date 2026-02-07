@@ -56,12 +56,28 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application...")
 
-    # Validate JWT secret is configured in non-debug mode
-    if not settings.debug and not settings.jwt_secret_key:
-        raise RuntimeError(
-            "JWT_SECRET_KEY must be set in production. "
-            "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
+    # Validate JWT secret key is properly configured
+    _jwt_insecure_defaults = {
+        "",
+        "dev-secret-key-change-in-production-abc123xyz",
+        "CHANGE_ME_generate_with_python_c_import_secrets_print_secrets_token_urlsafe_64",
+    }
+    _jwt_key = settings.jwt_secret_key.strip()
+    _jwt_is_insecure = _jwt_key in _jwt_insecure_defaults or _jwt_key.startswith("CHANGE_ME")
+
+    if _jwt_is_insecure:
+        _msg = (
+            "JWT_SECRET_KEY is missing or set to a known insecure default. "
+            "Generate a secure key with: python -c \"import secrets; print(secrets.token_urlsafe(64))\""
         )
+        if not settings.debug:
+            raise RuntimeError(_msg)
+        else:
+            logger.warning(
+                "INSECURE JWT_SECRET_KEY detected. %s "
+                "This is allowed in debug mode but MUST be fixed before deploying to production.",
+                _msg,
+            )
 
     start_scheduler()
     logger.info("Background scheduler started")

@@ -1613,6 +1613,12 @@ function setupEventListeners() {
     document.getElementById('applyFiltersBtn')?.addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn')?.addEventListener('click', clearFilters);
 
+    // Prevent filter form submission (replaces inline onsubmit)
+    document.getElementById('filterForm')?.addEventListener('submit', (e) => e.preventDefault());
+
+    // Back to records button (replaces inline onclick)
+    document.getElementById('backToRecordsBtn')?.addEventListener('click', hideRecordDetail);
+
     // Export menu items
     document.getElementById('exportReportsCSV')?.addEventListener('click', () => exportData('reports'));
     document.getElementById('exportRecordsCSV')?.addEventListener('click', () => exportData('records'));
@@ -2056,6 +2062,15 @@ async function loadDashboard() {
         console.error('Some dashboard components failed to load:', failures);
         const failedNames = failures.map(f => f.task.name).join(', ');
         showNotification(`Some components failed to load: ${failedNames}. Click retry to try again.`, 'error');
+    }
+
+    // Load comparison data and render stat card enhancements
+    try {
+        await loadComparisonData();
+        renderStatCardSparklines();
+        renderPeriodComparisons();
+    } catch (e) {
+        console.error('Error loading comparison data:', e);
     }
 
     hideLoadingProgress();
@@ -4037,6 +4052,15 @@ function applyWidgetVisibility() {
         const isVisible = pinnedWidgets.length === 0 || pinnedWidgets.includes(widgetId);
         target.style.display = isVisible ? '' : 'none';
     });
+
+    // Toggle primary charts section visibility
+    const primaryCharts = document.querySelector('.charts-section-primary');
+    if (primaryCharts) {
+        const hasPrimaryPinned = pinnedWidgets.length === 0 || pinnedWidgets.some(id =>
+            ['timeline', 'domain', 'sourceIp', 'disposition'].includes(id)
+        );
+        primaryCharts.style.display = hasPrimaryPinned ? '' : 'none';
+    }
 
     // Toggle secondary charts section visibility
     const secondaryCharts = document.querySelector('.charts-section-secondary');

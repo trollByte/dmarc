@@ -43,9 +43,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # Default CSP directives
         self.csp_directives = csp_directives or {
             "default-src": "'self'",
-            "script-src": "'self' 'unsafe-inline'",  # TODO: Replace 'unsafe-inline' with nonces for stricter CSP
-            "style-src": "'self' 'unsafe-inline'",  # TODO: Replace 'unsafe-inline' with nonces for stricter CSP
-            "img-src": "'self' data: https:",  # Allow data URIs and HTTPS images
+            "script-src": "'self' https://cdn.jsdelivr.net https://unpkg.com",
+            "style-src": "'self' 'unsafe-inline' https://unpkg.com",  # unsafe-inline required for Chart.js canvas rendering and Leaflet
+            "img-src": "'self' data: https:",  # Allow data URIs (Chart.js) and HTTPS images (map tiles)
             "font-src": "'self' https:",
             "connect-src": "'self' https:",  # Allow API calls
             "frame-ancestors": "'none'",  # Prevent framing

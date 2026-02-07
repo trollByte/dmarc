@@ -288,7 +288,7 @@
                 <main id="main-content">
                     <!-- PAGE: Dashboard -->
                     <section id="page-dashboard" class="page-section">
-                        <form class="filter-bar" role="search" aria-label="Filter reports" onsubmit="return false;">
+                        <form class="filter-bar" role="search" aria-label="Filter reports" id="filterForm">
                             <div class="filter-bar-main">
                                 <div class="filter-group"><label for="domainFilter">Domain</label><select id="domainFilter"><option value="">All Domains</option></select></div>
                                 <div class="filter-group"><label for="dateRangeFilter">Date Range</label><select id="dateRangeFilter"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365" selected>Last year</option><option value="all">All time</option><option value="custom">Custom range</option></select></div>
@@ -419,7 +419,7 @@
                 <div id="tab-overview" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-overview"><div class="loading">Loading...</div></div>
                 <div id="tab-records" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-records" hidden>
                     <div id="recordsInfo"><div id="recordsLoading" class="loading">Loading records...</div><table id="recordsTable" class="records-table" style="display: none;"><thead><tr><th scope="col">Source IP</th><th scope="col">Count</th><th scope="col">DKIM</th><th scope="col">SPF</th><th scope="col">Disposition</th><th scope="col">Actions</th></tr></thead><tbody id="recordsTableBody"></tbody></table><div id="recordsPagination"></div></div>
-                    <div id="recordDetail" style="display: none;"><button class="btn-ghost btn-sm" onclick="hideRecordDetail()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg> Back to Records</button><div id="recordDetailContent"></div></div>
+                    <div id="recordDetail" style="display: none;"><button class="btn-ghost btn-sm" id="backToRecordsBtn"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg> Back to Records</button><div id="recordDetailContent"></div></div>
                 </div>
                 <div id="tab-policy" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-policy" hidden><div class="loading">Loading policy...</div></div>
                 <div id="tab-raw" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-raw" hidden><div class="loading">Loading XML...</div></div>
