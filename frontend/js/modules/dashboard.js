@@ -28,6 +28,15 @@
          * Called on navigation to dashboard and on refresh.
          */
         load() {
+            // Restore dashboard sections in case welcome empty state hid them
+            var dashboardSection = document.getElementById('page-dashboard');
+            if (dashboardSection) {
+                var sections = dashboardSection.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
+                sections.forEach(function(section) {
+                    section.style.display = '';
+                });
+            }
+
             // Use the existing loadDashboard function from app.js
             if (typeof loadDashboard === 'function') {
                 loadDashboard();
@@ -49,7 +58,10 @@
          * Cleanup when navigating away from dashboard.
          */
         destroy() {
-            // Nothing to clean up - charts persist in DOM
+            // Stop auto-refresh when navigating away
+            if (typeof stopSmartRefresh === 'function') {
+                stopSmartRefresh();
+            }
         }
     };
 
