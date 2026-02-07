@@ -30,6 +30,7 @@ from app.api.scheduled_reports_routes import router as scheduled_reports_router
 from app.api.saml_routes import router as saml_router
 from app.api.notification_routes import router as notification_router
 from app.api.saved_view_routes import router as saved_view_router
+from app.api.setup_routes import router as setup_router
 from app.metrics import metrics_router, metrics_middleware
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.logging_config import setup_logging, log_requests_middleware
@@ -161,6 +162,7 @@ app.include_router(scheduled_reports_router, prefix="/api")
 app.include_router(saml_router, prefix="/api")
 app.include_router(notification_router, prefix="/api")
 app.include_router(saved_view_router, prefix="/api")
+app.include_router(setup_router, prefix="/api")
 app.include_router(metrics_router)
 
 # Add metrics collection middleware

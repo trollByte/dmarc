@@ -9,6 +9,8 @@
     'use strict';
 
     var API_BASE = '/api';
+    var threatPage = 1;
+    var threatPageSize = 50;
 
     /**
      * Escape HTML to prevent XSS - creates a text node and extracts safe HTML.
@@ -208,6 +210,7 @@
             table.appendChild(tbody);
             tableContainer.appendChild(table);
             tableSection.appendChild(tableContainer);
+            tableSection.appendChild(el('div', { id: 'threatPagination', className: 'pagination', style: { marginTop: '8px' } }));
             page.appendChild(tableSection);
 
             // Enriched Anomalies
@@ -481,11 +484,20 @@
                 var emptyRow = el('tr');
                 emptyRow.appendChild(el('td', { colspan: '7', className: 'threat-empty', textContent: 'No high-threat IPs found above score ' + this.minScore }));
                 tbody.appendChild(emptyRow);
+                this._renderThreatPagination(0);
                 return;
             }
 
+            // Client-side pagination
+            var totalItems = data.length;
+            var totalPages = Math.ceil(totalItems / threatPageSize);
+            if (threatPage > totalPages) threatPage = totalPages;
+            if (threatPage < 1) threatPage = 1;
+            var startIdx = (threatPage - 1) * threatPageSize;
+            var pageData = data.slice(startIdx, startIdx + threatPageSize);
+
             var self = this;
-            data.forEach(function(item) {
+            pageData.forEach(function(item) {
                 var row = el('tr');
 
                 // IP link
@@ -543,6 +555,32 @@
 
                 tbody.appendChild(row);
             });
+
+            this._renderThreatPagination(totalItems);
+        },
+
+        _renderThreatPagination: function(totalItems) {
+            var container = document.getElementById('threatPagination');
+            if (!container) return;
+            container.textContent = '';
+            if (totalItems <= threatPageSize) return;
+
+            var totalPages = Math.ceil(totalItems / threatPageSize);
+            var self = this;
+
+            var prevBtn = el('button', { className: 'btn-ghost btn-sm', textContent: 'Previous', disabled: threatPage <= 1 });
+            prevBtn.addEventListener('click', function() { threatPage--; self._renderHighThreatTable(); });
+
+            var start = (threatPage - 1) * threatPageSize + 1;
+            var end = Math.min(threatPage * threatPageSize, totalItems);
+            var info = el('span', { className: 'pagination-info', textContent: start + '-' + end + ' of ' + totalItems });
+
+            var nextBtn = el('button', { className: 'btn-ghost btn-sm', textContent: 'Next', disabled: threatPage >= totalPages });
+            nextBtn.addEventListener('click', function() { threatPage++; self._renderHighThreatTable(); });
+
+            container.appendChild(prevBtn);
+            container.appendChild(info);
+            container.appendChild(nextBtn);
         },
 
         _loadEnrichedAnomalies: async function() {

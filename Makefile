@@ -1,7 +1,10 @@
-.PHONY: help up down build logs test test-frontend lint format migrate backup restore health seed init-db rotate-secrets clean
+.PHONY: help setup up down build logs test test-frontend lint format migrate backup restore health seed init-db rotate-secrets clean
 
 help:
 	@echo "DMARC Report Processor - Available Commands:"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  make setup          - Interactive first-time setup (generates config, starts services, creates admin)"
 	@echo ""
 	@echo "Service Management:"
 	@echo "  make up             - Start all services"
@@ -27,6 +30,9 @@ help:
 	@echo ""
 	@echo "Security:"
 	@echo "  make rotate-secrets - Rotate JWT and Redis secrets"
+
+setup:
+	@python3 scripts/setup.py
 
 up:
 	docker compose up -d

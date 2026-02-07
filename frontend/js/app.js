@@ -1586,8 +1586,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         return fetch(url, options);
     };
 
-    // Show login overlay by default - dashboard loads after successful login
-    showLoginOverlay();
+    // Check if first-time setup is needed before showing login
+    const needsSetup = typeof checkSetupNeeded === 'function' ? await checkSetupNeeded() : false;
+    if (!needsSetup) {
+        // Show login overlay by default - dashboard loads after successful login
+        showLoginOverlay();
+    }
 });
 
 // ==========================================

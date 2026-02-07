@@ -120,103 +120,58 @@ A production-ready enterprise platform that ingests, processes, and analyzes DMA
 
 ### Required
 - Docker & Docker Compose
-- MaxMind GeoLite2 database (free account)
+- Python 3.8+ (for the setup script)
 
 ### Optional
-- Email account with IMAP access (for automated ingestion)
+- MaxMind GeoLite2 account (free — for IP geolocation maps)
+- Email account with IMAP access (for automated report ingestion)
 - Microsoft Teams/Slack webhooks (for alerts)
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Clone Repository
 ```bash
 git clone <repo-url>
 cd dmarc
+make setup
 ```
 
-### 2. Download MaxMind Database
-1. Sign up at: https://dev.maxmind.com/geoip/geolite2-free-geolocation-data
-2. Download **GeoLite2-City.mmdb**
-3. Place at: `backend/data/GeoLite2-City.mmdb`
+That's it. The interactive setup will:
+1. Generate a `.env` file with secure secrets
+2. Ask for your admin email and password
+3. Optionally configure email ingestion and geolocation
+4. Start all 7 Docker services
+5. Run database migrations and create your admin account
 
+When it finishes, open **http://localhost** and log in.
+
+**Non-interactive mode** (for CI/automation):
 ```bash
-mkdir -p backend/data
-# Copy GeoLite2-City.mmdb to backend/data/
+ADMIN_EMAIL=admin@co.com ADMIN_PASSWORD=secret SKIP_EMAIL=1 SKIP_GEO=1 make setup
 ```
 
-### 3. Configure Environment
-```bash
-cp .env.sample .env
-# Edit .env with your settings
-```
+**Browser-based setup:** If you prefer, just run `docker compose up -d` and open http://localhost — a setup wizard will guide you through the same steps in your browser.
 
-**Required Settings**:
-```env
-# JWT Secret (generate with: python -c "import secrets; print(secrets.token_urlsafe(64))")
-JWT_SECRET_KEY=your-secret-key-here
+### Services
+| Service | Port | Description |
+|---------|------|-------------|
+| Dashboard | 80 | Web UI (Nginx) |
+| Backend API | 8000 | FastAPI + Swagger docs at `/docs` |
+| Flower | 5555 | Celery task monitoring |
+| PostgreSQL | 5433 | Database |
+| Redis | 6379 | Cache & message broker |
 
-# Celery + Redis
-USE_CELERY=true
-CELERY_BROKER_URL=redis://redis:6379/0
+### Advanced Setup
 
-# Database
-DATABASE_URL=postgresql://dmarc:dmarc@db:5432/dmarc
+If you need more control, see the manual steps:
 
-# Email (optional - for automated ingestion)
-EMAIL_HOST=imap.gmail.com
-EMAIL_PORT=993
-EMAIL_USER=your-email@example.com
-EMAIL_PASSWORD=your-app-password
-
-# Alerts (optional)
-TEAMS_WEBHOOK_URL=https://your-teams-webhook
-```
-
-### 4. Start Services
-```bash
-docker compose up -d --build
-```
-
-**Services**:
-- `backend` - FastAPI application (port 8000)
-- `celery-worker` - Background task processor
-- `celery-beat` - Scheduled task scheduler
-- `flower` - Celery monitoring UI (port 5555)
-- `db` - PostgreSQL database
-- `redis` - Cache & message broker
-- `nginx` - Web server (port 80)
-
-### 5. Run Database Migrations
-```bash
-docker compose exec backend alembic upgrade head
-```
-
-**Migrations Applied**:
-- `001` - Ingested reports table
-- `002` - DMARC reports & records tables
-- `003` - Performance indexes
-- `004` - Celery task tracking
-- `005` - User authentication
-- `006` - Enhanced alerting
-- `007` - ML analytics & geolocation
-
-### 6. Create Admin User
-```bash
-docker compose exec backend python scripts/create_admin_user.py
-```
-
-Follow the prompts to create your first admin user.
-
-### 7. Access the Platform
-- **Dashboard**: http://localhost
-- **API Docs**: http://localhost:8000/docs
-- **Flower (Tasks)**: http://localhost:5555
-- **Health Check**: http://localhost/health
-
-### 8. Login
-Use the admin credentials you created to login via the dashboard or API.
+1. Copy and edit the environment file: `cp .env.example .env`
+2. Generate a JWT secret: `python -c "import secrets; print(secrets.token_urlsafe(64))"`
+3. Start services: `docker compose up -d --build`
+4. Run migrations: `docker compose exec backend alembic upgrade head`
+5. Create admin user: `bash scripts/init-db.sh --create-admin`
+6. Access the dashboard at http://localhost
 
 ---
 

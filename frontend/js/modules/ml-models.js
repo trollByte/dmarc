@@ -24,6 +24,8 @@
         selectedModelId: null,
         selectedAnomalyIdx: null,
         anomalyResults: [],
+        anomalyPage: 1,
+        anomalyPageSize: 50,
         refreshInterval: null,
 
         init: function() {
@@ -247,6 +249,12 @@
             table.appendChild(tbody);
             tableWrap.appendChild(table);
             panel.appendChild(tableWrap);
+
+            var anomPagination = document.createElement('div');
+            anomPagination.id = 'ml-anomalies-pagination';
+            anomPagination.className = 'pagination';
+            anomPagination.style.marginTop = '8px';
+            panel.appendChild(anomPagination);
 
             var loading = document.createElement('div');
             loading.id = 'ml-anomalies-loading';
@@ -778,14 +786,24 @@
                 cell.textContent = 'No anomalies detected.';
                 row.appendChild(cell);
                 tbody.appendChild(row);
+                this._renderAnomaliesPagination(0);
                 return;
             }
 
             // Sort by anomaly score (most anomalous first)
             anomalies.sort(function(a, b) { return (a.anomaly_score || 0) - (b.anomaly_score || 0); });
 
+            // Client-side pagination
+            var totalItems = anomalies.length;
+            var totalPages = Math.ceil(totalItems / this.anomalyPageSize);
+            if (this.anomalyPage > totalPages) this.anomalyPage = totalPages;
+            if (this.anomalyPage < 1) this.anomalyPage = 1;
+            var startIdx = (this.anomalyPage - 1) * this.anomalyPageSize;
+            var pageData = anomalies.slice(startIdx, startIdx + this.anomalyPageSize);
+
             var self = this;
-            anomalies.forEach(function(anomaly, idx) {
+            pageData.forEach(function(anomaly, localIdx) {
+                var idx = startIdx + localIdx;
                 var row = document.createElement('tr');
                 row.className = 'clickable-row';
                 row.setAttribute('data-idx', idx);
@@ -860,6 +878,46 @@
 
                 tbody.appendChild(row);
             });
+
+            this._renderAnomaliesPagination(totalItems);
+        },
+
+        _renderAnomaliesPagination: function(totalItems) {
+            var container = document.getElementById('ml-anomalies-pagination');
+            if (!container) return;
+            clearChildren(container);
+            if (totalItems <= this.anomalyPageSize) return;
+
+            var totalPages = Math.ceil(totalItems / this.anomalyPageSize);
+            var self = this;
+
+            var prevBtn = document.createElement('button');
+            prevBtn.className = 'btn-ghost btn-sm';
+            prevBtn.textContent = 'Previous';
+            prevBtn.disabled = this.anomalyPage <= 1;
+            prevBtn.addEventListener('click', function() {
+                self.anomalyPage--;
+                self._renderAnomaliesTable(self.anomalyResults);
+            });
+
+            var start = (this.anomalyPage - 1) * this.anomalyPageSize + 1;
+            var end = Math.min(this.anomalyPage * this.anomalyPageSize, totalItems);
+            var info = document.createElement('span');
+            info.className = 'pagination-info';
+            info.textContent = start + '-' + end + ' of ' + totalItems;
+
+            var nextBtn = document.createElement('button');
+            nextBtn.className = 'btn-ghost btn-sm';
+            nextBtn.textContent = 'Next';
+            nextBtn.disabled = this.anomalyPage >= totalPages;
+            nextBtn.addEventListener('click', function() {
+                self.anomalyPage++;
+                self._renderAnomaliesTable(self.anomalyResults);
+            });
+
+            container.appendChild(prevBtn);
+            container.appendChild(info);
+            container.appendChild(nextBtn);
         },
 
         _showAnomalyDetail: function(idx) {

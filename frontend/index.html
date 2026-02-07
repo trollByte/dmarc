@@ -10,6 +10,117 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
 <body>
+    <!-- Setup Wizard Overlay (shown only on first run) -->
+    <div id="setupWizardOverlay" class="login-overlay" style="display: none; z-index: 10000;">
+        <div class="login-card" style="max-width: 480px;">
+            <!-- Step indicators -->
+            <div class="setup-progress" id="setupProgress">
+                <div class="setup-progress-bar" id="setupProgressBar" style="width: 20%;"></div>
+            </div>
+
+            <!-- Step 1: Welcome -->
+            <div class="setup-step" id="setupStep1">
+                <div class="login-header">
+                    <svg class="login-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                    <h1 class="login-title">Welcome to DMARC Dashboard</h1>
+                    <p class="login-subtitle">Let's get you set up in a couple of minutes. This wizard will create your admin account so you can start analyzing DMARC reports.</p>
+                </div>
+                <button type="button" class="btn-primary login-submit" onclick="setupWizardNext()">Get Started</button>
+            </div>
+
+            <!-- Step 2: Security (auto) -->
+            <div class="setup-step" id="setupStep2" style="display: none;">
+                <div class="login-header">
+                    <h1 class="login-title">Security Configuration</h1>
+                    <p class="login-subtitle">Secure keys have been automatically generated for your installation.</p>
+                </div>
+                <div class="setup-check-list">
+                    <div class="setup-check-item">&#10003; JWT secret key generated</div>
+                    <div class="setup-check-item">&#10003; Database password secured</div>
+                    <div class="setup-check-item">&#10003; Redis password secured</div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="setupWizardBack()" style="flex:1;">Back</button>
+                    <button type="button" class="btn-primary login-submit" onclick="setupWizardNext()" style="flex:2;">Continue</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Admin Account -->
+            <div class="setup-step" id="setupStep3" style="display: none;">
+                <div class="login-header">
+                    <h1 class="login-title">Create Admin Account</h1>
+                    <p class="login-subtitle">This will be your login for the dashboard.</p>
+                </div>
+                <form id="setupAdminForm" class="login-form" onsubmit="return false;">
+                    <div class="login-field">
+                        <label for="setupEmail">Email</label>
+                        <input type="email" id="setupEmail" required placeholder="admin@yourcompany.com" autocomplete="email">
+                    </div>
+                    <div class="login-field">
+                        <label for="setupPassword">Password</label>
+                        <input type="password" id="setupPassword" required minlength="8" placeholder="At least 8 characters" autocomplete="new-password">
+                    </div>
+                    <div class="login-field">
+                        <label for="setupPasswordConfirm">Confirm Password</label>
+                        <input type="password" id="setupPasswordConfirm" required minlength="8" placeholder="Repeat your password" autocomplete="new-password">
+                    </div>
+                    <div id="setupError" class="login-error" hidden></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button type="button" class="btn-secondary" onclick="setupWizardBack()" style="flex:1;">Back</button>
+                        <button type="button" class="btn-primary login-submit" onclick="setupWizardNext()" style="flex:2;">Continue</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Step 4: Optional Integrations -->
+            <div class="setup-step" id="setupStep4" style="display: none;">
+                <div class="login-header">
+                    <h1 class="login-title">Optional Integrations</h1>
+                    <p class="login-subtitle">You can configure these now or later in Settings.</p>
+                </div>
+                <div class="login-form">
+                    <details class="setup-integration">
+                        <summary>Email Ingestion (auto-import DMARC reports)</summary>
+                        <div class="login-field" style="margin-top: 10px;">
+                            <label for="setupImapHost">IMAP Host</label>
+                            <input type="text" id="setupImapHost" placeholder="imap.gmail.com">
+                        </div>
+                        <div class="login-field">
+                            <label for="setupImapUser">IMAP User</label>
+                            <input type="text" id="setupImapUser" placeholder="dmarc-reports@company.com">
+                        </div>
+                        <div class="login-field">
+                            <label for="setupImapPass">IMAP Password</label>
+                            <input type="password" id="setupImapPass" placeholder="App password">
+                        </div>
+                    </details>
+                    <details class="setup-integration">
+                        <summary>IP Geolocation (requires free MaxMind account)</summary>
+                        <div class="login-field" style="margin-top: 10px;">
+                            <label for="setupMaxmindKey">MaxMind License Key</label>
+                            <input type="text" id="setupMaxmindKey" placeholder="Your license key">
+                        </div>
+                    </details>
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <button type="button" class="btn-secondary" onclick="setupWizardBack()" style="flex:1;">Back</button>
+                        <button type="button" class="btn-primary login-submit" id="setupSubmitBtn" onclick="setupWizardSubmit()" style="flex:2;">Complete Setup</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Done -->
+            <div class="setup-step" id="setupStep5" style="display: none;">
+                <div class="login-header">
+                    <h1 class="login-title">You're All Set!</h1>
+                    <p class="login-subtitle">Your DMARC Dashboard is ready. Log in with the admin account you just created.</p>
+                </div>
+                <button type="button" class="btn-primary login-submit" onclick="setupWizardFinish()">Go to Login</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Login Overlay -->
     <div id="loginOverlay" class="login-overlay">
         <div class="login-card">
@@ -478,6 +589,7 @@
     </div>
 
     <!-- Scripts: app.js first (core), then modules -->
+    <script src="js/modules/setup-wizard.js"></script>
     <script src="js/app.js"></script>
     <script src="js/modules/router.js"></script>
     <script src="js/modules/dashboard.js"></script>

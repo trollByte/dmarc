@@ -3921,6 +3921,74 @@ tr:hover {
 }
 
 /* ==========================================
+   SETUP WIZARD
+   ========================================== */
+
+.setup-progress {
+    height: 4px;
+    background: var(--border-color);
+    border-radius: 2px;
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.setup-progress-bar {
+    height: 100%;
+    background: var(--accent-primary);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.setup-check-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 16px 0;
+    padding: 16px;
+    background: rgba(39, 174, 96, 0.08);
+    border-radius: 8px;
+}
+
+.setup-check-item {
+    font-size: 0.9rem;
+    color: var(--accent-success, #27ae60);
+    font-weight: 500;
+}
+
+.setup-integration {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+}
+
+.setup-integration summary {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.setup-integration[open] summary {
+    margin-bottom: 8px;
+}
+
+.btn-secondary {
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-secondary:hover {
+    background: var(--bg-secondary);
+}
+
+/* ==========================================
    USER MENU
    ========================================== */
 
