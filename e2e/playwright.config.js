@@ -14,11 +14,11 @@ module.exports = defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  /* Retry failed tests (concurrent login can cause intermittent failures) */
+  retries: process.env.CI ? 2 : 1,
 
-  /* Opt out of parallel tests on CI */
-  workers: process.env.CI ? 1 : undefined,
+  /* Limit workers to avoid account lockout from concurrent login attempts */
+  workers: process.env.CI ? 1 : 2,
 
   /* Reporter to use */
   reporter: [
@@ -30,7 +30,7 @@ module.exports = defineConfig({
   /* Shared settings for all the projects below */
   use: {
     /* Base URL to use in actions like `await page.goto('/')` */
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
+    baseURL: process.env.BASE_URL || 'http://localhost:80',
 
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
@@ -98,7 +98,7 @@ module.exports = defineConfig({
   /* Run local dev server before starting the tests */
   webServer: process.env.CI ? undefined : {
     command: 'cd .. && docker compose up -d && sleep 10',
-    url: 'http://localhost:3000',
+    url: 'http://localhost:80',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

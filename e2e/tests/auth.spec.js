@@ -1,5 +1,6 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const { loginAndWaitForDashboard } = require('./helpers/login');
 
 /**
  * Authentication flow tests (runs with authenticated state from setup)
@@ -9,12 +10,13 @@ const { test, expect } = require('@playwright/test');
 test.describe('Authenticated User Experience', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await loginAndWaitForDashboard(page);
   });
 
   test('dashboard is visible when authenticated', async ({ page }) => {
     // Dashboard should be visible (login overlay hidden)
-    const dashboard = page.locator('#dashboardContainer, [data-testid="dashboard"], .dashboard');
-    await expect(dashboard.first()).toBeVisible({ timeout: 10000 });
+    const dashboard = page.locator('#dashboardContainer');
+    await expect(dashboard).toBeVisible({ timeout: 10000 });
   });
 
   test('login overlay is hidden when authenticated', async ({ page }) => {
@@ -28,13 +30,13 @@ test.describe('Authenticated User Experience', () => {
   });
 
   test('user menu is visible when logged in', async ({ page }) => {
-    const userMenu = page.locator('#userMenu, [data-testid="user-menu"], .user-menu');
+    const userMenu = page.locator('#userMenu');
 
     if (await userMenu.isVisible().catch(() => false)) {
       await expect(userMenu).toBeVisible();
 
       // User display name should be shown
-      const displayName = page.locator('#userDisplayName, [data-testid="user-display-name"]');
+      const displayName = page.locator('#userDisplayName');
       if (await displayName.isVisible().catch(() => false)) {
         const text = await displayName.textContent();
         expect(text.length).toBeGreaterThan(0);
@@ -43,16 +45,16 @@ test.describe('Authenticated User Experience', () => {
   });
 
   test('user menu dropdown opens on click', async ({ page }) => {
-    const userMenuTrigger = page.locator('#userMenuTrigger, [data-testid="user-menu-trigger"]');
+    const userMenuTrigger = page.locator('#userMenuTrigger');
 
     if (await userMenuTrigger.isVisible().catch(() => false)) {
       await userMenuTrigger.click();
 
-      const dropdown = page.locator('#userMenuDropdown, [data-testid="user-menu-dropdown"]');
+      const dropdown = page.locator('#userMenuDropdown');
       await expect(dropdown).toBeVisible({ timeout: 3000 });
 
       // Dropdown should show username and role
-      const username = page.locator('#userMenuUsername, [data-testid="user-menu-username"]');
+      const username = page.locator('#userMenuUsername');
       if (await username.isVisible().catch(() => false)) {
         const text = await username.textContent();
         expect(text.length).toBeGreaterThan(0);
@@ -60,42 +62,37 @@ test.describe('Authenticated User Experience', () => {
     }
   });
 
-  test('API calls succeed with authentication', async ({ page }) => {
-    // Wait for the summary API call that the dashboard makes
-    const response = await page.waitForResponse(
-      (response) => response.url().includes('/api/rollup/summary') || response.url().includes('/api/healthz'),
-      { timeout: 15000 }
-    ).catch(() => null);
-
-    if (response) {
-      // Should not get 401
-      expect(response.status()).not.toBe(401);
-    }
+  test('API calls succeed with authentication', async ({ page, request }) => {
+    // Make an API call to verify auth works (uses storageState cookies)
+    const response = await request.get('/api/rollup/summary');
+    // Should not get 401 (authenticated via storageState)
+    expect(response.status()).not.toBe(401);
   });
 });
 
 test.describe('Logout Flow', () => {
   test('logout button returns to login screen', async ({ page }) => {
     await page.goto('/');
+    await loginAndWaitForDashboard(page);
 
     // Wait for dashboard to load
-    const dashboard = page.locator('#dashboardContainer, [data-testid="dashboard"], .dashboard');
-    await dashboard.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+    const dashboard = page.locator('#dashboardContainer');
+    await dashboard.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
 
     // Find and click logout button (may be in a dropdown menu)
-    const userMenuTrigger = page.locator('#userMenuTrigger, [data-testid="user-menu-trigger"]');
+    const userMenuTrigger = page.locator('#userMenuTrigger');
     if (await userMenuTrigger.isVisible().catch(() => false)) {
       await userMenuTrigger.click();
       await page.waitForTimeout(500);
     }
 
-    const logoutBtn = page.locator('#logoutBtn, [data-testid="logout-button"], button:has-text("Logout"), button:has-text("Log out"), button:has-text("Sign out")');
+    const logoutBtn = page.locator('#logoutBtn');
     if (await logoutBtn.isVisible().catch(() => false)) {
       await logoutBtn.click();
 
       // Login overlay should become visible
-      const loginOverlay = page.locator('#loginOverlay, #loginForm, [data-testid="login-form"]');
-      await expect(loginOverlay.first()).toBeVisible({ timeout: 5000 });
+      const loginOverlay = page.locator('#loginOverlay');
+      await expect(loginOverlay).toBeVisible({ timeout: 5000 });
 
       // Dashboard should be hidden
       const dashboardAfterLogout = page.locator('#dashboardContainer');

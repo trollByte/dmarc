@@ -10,40 +10,35 @@ test.describe('Authentication Flow', () => {
   test('shows login page for unauthenticated users', async ({ page }) => {
     await page.goto('/');
 
-    // Should show login form or redirect to login
-    const loginForm = page.locator('#loginForm, [data-testid="login-form"], form');
-    const loginButton = page.locator('button:has-text("Login"), button:has-text("Sign in")');
-
-    const hasLoginForm = await loginForm.isVisible().catch(() => false);
-    const hasLoginButton = await loginButton.isVisible().catch(() => false);
-
-    expect(hasLoginForm || hasLoginButton).toBeTruthy();
+    // Should show login form
+    const loginForm = page.locator('#loginForm');
+    await expect(loginForm).toBeVisible();
   });
 
   test('displays login form fields', async ({ page }) => {
     await page.goto('/');
 
     // Username field
-    const usernameField = page.locator('#username, [name="username"], input[type="text"]');
-    await expect(usernameField.first()).toBeVisible();
+    const usernameField = page.locator('#loginUsername');
+    await expect(usernameField).toBeVisible();
 
     // Password field
-    const passwordField = page.locator('#password, [name="password"], input[type="password"]');
-    await expect(passwordField.first()).toBeVisible();
+    const passwordField = page.locator('#loginPassword');
+    await expect(passwordField).toBeVisible();
   });
 
   test('shows error for invalid credentials', async ({ page }) => {
     await page.goto('/');
 
     // Fill in invalid credentials
-    await page.fill('#username, [name="username"]', 'invalid_user');
-    await page.fill('#password, [name="password"]', 'wrong_password');
+    await page.fill('#loginUsername', 'invalid_user');
+    await page.fill('#loginPassword', 'wrong_password');
 
     // Submit form
-    await page.click('button[type="submit"], #loginBtn');
+    await page.click('#loginSubmitBtn');
 
     // Wait for error message
-    const errorMessage = page.locator('.error, .alert-error, [data-testid="error-message"], [role="alert"]');
+    const errorMessage = page.locator('#loginError');
     await expect(errorMessage).toBeVisible({ timeout: 5000 });
   });
 
@@ -51,17 +46,17 @@ test.describe('Authentication Flow', () => {
     await page.goto('/');
 
     // Try to submit without filling in credentials
-    const submitButton = page.locator('button[type="submit"], #loginBtn');
+    const submitButton = page.locator('#loginSubmitBtn');
     await submitButton.click();
 
     // Should show validation error or prevent submission
     // Either error message shows or form doesn't submit
-    const errorMessage = page.locator('.error, .alert-error, [data-testid="error-message"]');
+    const errorMessage = page.locator('#loginError');
     const isErrorVisible = await errorMessage.isVisible().catch(() => false);
 
     // If no error message, we should still be on login page
     if (!isErrorVisible) {
-      const loginForm = page.locator('#loginForm, [data-testid="login-form"]');
+      const loginForm = page.locator('#loginForm');
       await expect(loginForm).toBeVisible();
     }
   });
@@ -69,15 +64,15 @@ test.describe('Authentication Flow', () => {
   test('password field hides input', async ({ page }) => {
     await page.goto('/');
 
-    const passwordField = page.locator('#password, [name="password"], input[type="password"]');
-    await expect(passwordField.first()).toHaveAttribute('type', 'password');
+    const passwordField = page.locator('#loginPassword');
+    await expect(passwordField).toHaveAttribute('type', 'password');
   });
 });
 
 test.describe('API Authentication', () => {
   test('protected endpoints require authentication', async ({ request }) => {
     // Try to access protected endpoint without auth
-    const response = await request.get('/api/reports');
+    const response = await request.get('/api/saved-views');
 
     // Should return 401 or redirect
     expect([401, 403]).toContain(response.status());

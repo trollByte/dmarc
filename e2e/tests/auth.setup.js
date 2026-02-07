@@ -20,26 +20,23 @@ setup('authenticate', async ({ page }) => {
   }
 
   // Wait for login form
-  const loginForm = page.locator('#loginForm, [data-testid="login-form"], form');
+  const loginForm = page.locator('#loginForm');
   await expect(loginForm).toBeVisible({ timeout: 10000 });
 
   // Fill in credentials (use environment variables or test defaults)
   const username = process.env.TEST_USERNAME || 'admin';
-  const password = process.env.TEST_PASSWORD || 'changeme123!';
+  const password = process.env.TEST_PASSWORD || 'Testpass123!';
 
-  await page.fill('#username, [name="username"], input[type="text"]', username);
-  await page.fill('#password, [name="password"], input[type="password"]', password);
+  await page.fill('#loginUsername', username);
+  await page.fill('#loginPassword', password);
 
   // Submit login form
-  await page.click('button[type="submit"], #loginBtn, [data-testid="login-button"]');
+  await page.click('#loginSubmitBtn, button[type="submit"]');
 
-  // Wait for successful login - dashboard should be visible
-  await expect(page.locator('#dashboard, [data-testid="dashboard"], .dashboard')).toBeVisible({
+  // Wait for successful login - dashboard container should become visible
+  await expect(page.locator('#dashboardContainer')).toBeVisible({
     timeout: 10000,
   });
-
-  // Verify we're logged in
-  await expect(page).not.toHaveURL(/login/);
 
   // Save authentication state
   await page.context().storageState({ path: authFile });
