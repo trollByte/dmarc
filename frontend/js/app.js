@@ -1035,7 +1035,7 @@ async function searchOrganizations(query) {
             const response = await fetch(`${API_BASE}/rollup/top-organizations?${buildQueryString()}`);
             if (response.ok) {
                 const data = await response.json();
-                searchCache.organizations = data.map(o => o.org_name);
+                searchCache.organizations = (data.organizations || []).map(o => o.org_name);
             }
         } catch (e) {
             console.error('Failed to fetch organizations:', e);
@@ -3389,21 +3389,22 @@ async function loadComparisonData() {
         if (!response.ok) return null;
 
         const data = await response.json();
+        const timeline = data.timeline || [];
 
-        if (!data || data.length < 2) return null;
+        if (timeline.length < 2) return null;
 
         // Extract trend data
-        trendDataCache.passRate = data.map(d => {
+        trendDataCache.passRate = timeline.map(d => {
             const total = (d.pass_count || 0) + (d.fail_count || 0);
             return total > 0 ? (d.pass_count / total) * 100 : 0;
         });
 
-        trendDataCache.failRate = data.map(d => {
+        trendDataCache.failRate = timeline.map(d => {
             const total = (d.pass_count || 0) + (d.fail_count || 0);
             return total > 0 ? (d.fail_count / total) * 100 : 0;
         });
 
-        trendDataCache.messageVolume = data.map(d => (d.pass_count || 0) + (d.fail_count || 0));
+        trendDataCache.messageVolume = timeline.map(d => (d.pass_count || 0) + (d.fail_count || 0));
 
         trendDataCache.lastUpdated = new Date();
 
