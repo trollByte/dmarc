@@ -25,6 +25,7 @@ celery_app = Celery(
         "app.tasks.alerting",
         "app.tasks.ml_tasks",
         "app.tasks.advisor_tasks",
+        "app.tasks.scheduled_reports",
     ]
 )
 
@@ -88,6 +89,11 @@ celery_app.conf.beat_schedule = {
     "send-daily-health-summary": {
         "task": "app.tasks.advisor_tasks.send_daily_health_summary",
         "schedule": crontab(hour=8, minute=0),  # Daily 8 AM
+    },
+    # Process scheduled reports every 15 minutes
+    "process-scheduled-reports-every-15min": {
+        "task": "app.tasks.scheduled_reports.process_scheduled_reports_task",
+        "schedule": 900.0,  # 15 minutes in seconds
     },
 }
 

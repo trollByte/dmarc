@@ -139,6 +139,93 @@ class TestAuthURL:
         assert len(token1) > 20
         assert token1 != token2
 
+    @patch("app.services.oauth_service.redis.from_url")
+    def test_store_and_validate_state_token_redis(self, mock_redis_from_url, mock_db):
+        """Test state token storage and validation with Redis"""
+        # Setup Redis mock
+        mock_redis_client = MagicMock()
+        mock_redis_client.ping.return_value = True
+        mock_redis_client.setex.return_value = True
+        mock_redis_client.get.return_value = "https://example.com/callback"
+        mock_redis_client.delete.return_value = 1
+        mock_redis_from_url.return_value = mock_redis_client
+
+        service = OAuthService(mock_db)
+
+        # Store state token
+        state = "test-state-token"
+        result = service.store_state_token(state, "https://example.com/callback", ttl=600)
+
+        assert result is True
+        mock_redis_client.setex.assert_called_once_with(
+            "oauth_state:test-state-token", 600, "https://example.com/callback"
+        )
+
+        # Validate state token
+        data = service.validate_state_token(state)
+
+        assert data == "https://example.com/callback"
+        mock_redis_client.get.assert_called_once_with("oauth_state:test-state-token")
+        mock_redis_client.delete.assert_called_once_with("oauth_state:test-state-token")
+
+    @patch("app.services.oauth_service.redis.from_url")
+    def test_store_and_validate_state_token_fallback(self, mock_redis_from_url, mock_db):
+        """Test state token storage falls back to in-memory when Redis unavailable"""
+        # Setup Redis to fail
+        mock_redis_from_url.side_effect = Exception("Redis connection failed")
+
+        service = OAuthService(mock_db)
+
+        # Should fall back to in-memory storage
+        assert service._redis_enabled is False
+
+        # Store state token in memory
+        state = "test-state-token"
+        result = service.store_state_token(state, "https://example.com/callback", ttl=600)
+
+        assert result is True
+        assert state in service._state_tokens
+        assert service._state_tokens[state] == "https://example.com/callback"
+
+        # Validate state token from memory
+        data = service.validate_state_token(state)
+
+        assert data == "https://example.com/callback"
+        assert state not in service._state_tokens  # Should be removed after validation
+
+    @patch("app.services.oauth_service.redis.from_url")
+    def test_validate_invalid_state_token(self, mock_redis_from_url, mock_db):
+        """Test validating non-existent state token returns None"""
+        mock_redis_client = MagicMock()
+        mock_redis_client.ping.return_value = True
+        mock_redis_client.get.return_value = None
+        mock_redis_from_url.return_value = mock_redis_client
+
+        service = OAuthService(mock_db)
+
+        result = service.validate_state_token("non-existent-token")
+
+        assert result is None
+
+    @patch("app.services.oauth_service.redis.from_url")
+    def test_redis_error_during_store_falls_back(self, mock_redis_from_url, mock_db):
+        """Test Redis error during store operation falls back to memory"""
+        mock_redis_client = MagicMock()
+        mock_redis_client.ping.return_value = True
+        mock_redis_client.setex.side_effect = Exception("Redis write failed")
+        mock_redis_from_url.return_value = mock_redis_client
+
+        service = OAuthService(mock_db)
+        assert service._redis_enabled is True
+
+        # Store should fall back to memory after Redis error
+        state = "test-state"
+        result = service.store_state_token(state, "data")
+
+        assert result is True
+        assert service._redis_enabled is False  # Redis disabled after error
+        assert state in service._state_tokens  # Stored in memory
+
 
 @pytest.mark.unit
 class TestTokenExchange:

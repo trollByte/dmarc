@@ -90,6 +90,22 @@ class PasswordResetResponse(BaseModel):
     success: bool = Field(..., description="Whether the operation succeeded")
 
 
+class AccountUnlockRequest(BaseModel):
+    """Request account unlock via email"""
+    email: EmailStr = Field(..., description="Email address associated with the locked account")
+
+
+class AccountUnlockConfirm(BaseModel):
+    """Confirm account unlock with token"""
+    token: str = Field(..., description="Account unlock token from email")
+
+
+class AccountUnlockResponse(BaseModel):
+    """Account unlock response"""
+    message: str = Field(..., description="Status message")
+    success: bool = Field(..., description="Whether the operation succeeded")
+
+
 class UserResponse(UserBase):
     """User response schema (public info)"""
     id: UUID

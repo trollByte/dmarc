@@ -8,7 +8,7 @@ All models are exported from this module for easy importing.
 from app.models.dmarc import IngestedReport, DmarcReport, DmarcRecord
 
 # User authentication models
-from app.models.user import User, UserAPIKey, RefreshToken, PasswordResetToken, UserRole
+from app.models.user import User, UserAPIKey, RefreshToken, PasswordResetToken, AccountUnlockToken, UserRole
 
 # Alert models
 from app.models.alert import (
@@ -41,6 +41,7 @@ __all__ = [
     "UserAPIKey",
     "RefreshToken",
     "PasswordResetToken",
+    "AccountUnlockToken",
     "UserRole",
     # Alert models
     "AlertHistory",

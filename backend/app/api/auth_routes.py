@@ -17,6 +17,7 @@ from app.models import User, UserRole
 from app.config import get_settings
 from app.services.auth_service import AuthService
 from app.services.password_reset_service import PasswordResetService, PasswordResetError
+from app.services.account_unlock_service import AccountUnlockService, AccountUnlockError
 from app.services.totp_service import TOTPService
 from app.dependencies.auth import get_current_user
 from app.schemas.auth_schemas import (
@@ -29,6 +30,9 @@ from app.schemas.auth_schemas import (
     PasswordResetValidate,
     PasswordResetConfirm,
     PasswordResetResponse,
+    AccountUnlockRequest,
+    AccountUnlockConfirm,
+    AccountUnlockResponse,
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -481,4 +485,113 @@ async def confirm_password_reset(
     return PasswordResetResponse(
         success=True,
         message="Password has been reset successfully. Please login with your new password."
+    )
+
+
+# ==================== Account Unlock Endpoints ====================
+
+@router.post(
+    "/unlock-request",
+    response_model=AccountUnlockResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request account unlock"
+)
+async def request_account_unlock(
+    request: Request,
+    unlock_request: AccountUnlockRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Request an account unlock email.
+
+    **Security Notes:**
+    - Always returns success to prevent email enumeration
+    - Unlock link expires in 1 hour
+    - Only one active unlock token per user
+    - Only sends email if account is actually locked
+
+    **Usage:**
+    ```
+    POST /auth/unlock-request
+    {
+        "email": "user@example.com"
+    }
+    ```
+
+    **Response:**
+    ```json
+    {
+        "success": true,
+        "message": "If your account is locked, an unlock link has been sent to your email."
+    }
+    ```
+    """
+    client_ip = request.client.host if request.client else None
+
+    service = AccountUnlockService(db)
+    success, token = service.request_unlock(
+        email=unlock_request.email,
+        request_ip=client_ip
+    )
+
+    # If we have a token, send unlock email (via SMTP, or logs URL if SMTP not configured)
+    if token:
+        unlock_url_base = f"{settings.frontend_url}/unlock-account"
+        service.send_unlock_email(
+            email=unlock_request.email,
+            unlock_token=token,
+            unlock_url_base=unlock_url_base
+        )
+
+    # Always return same message to prevent email enumeration
+    return AccountUnlockResponse(
+        success=True,
+        message="If your account is locked, an unlock link has been sent to your email."
+    )
+
+
+@router.post(
+    "/unlock-confirm",
+    response_model=AccountUnlockResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Unlock account with token"
+)
+async def confirm_account_unlock(
+    confirm_request: AccountUnlockConfirm,
+    db: Session = Depends(get_db)
+):
+    """
+    Unlock account using the unlock token.
+
+    **What happens:**
+    - Account is unlocked (is_locked = False)
+    - Failed login attempts counter is reset to 0
+    - User can login normally again
+    - Token is invalidated after use
+
+    **Usage:**
+    ```
+    POST /auth/unlock-confirm
+    {
+        "token": "<unlock_token_from_email>"
+    }
+    ```
+
+    **Response:**
+    - 200: Account unlocked successfully
+    - 400: Invalid or expired token
+    """
+    service = AccountUnlockService(db)
+
+    try:
+        service.unlock_account(token=confirm_request.token)
+    except AccountUnlockError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    return AccountUnlockResponse(
+        success=True,
+        message="Account has been unlocked successfully. You may now login."
     )

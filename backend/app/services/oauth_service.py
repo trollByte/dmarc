@@ -17,6 +17,7 @@ OAuth Flow:
 import logging
 import secrets
 import httpx
+import redis
 from datetime import datetime
 from typing import Optional, Tuple, Dict, Any
 from dataclasses import dataclass
@@ -71,7 +72,25 @@ class OAuthService:
 
     def __init__(self, db: Session):
         self.db = db
-        self._state_tokens: Dict[str, str] = {}  # In production, use Redis
+        self._state_tokens: Dict[str, str] = {}  # Fallback for when Redis is unavailable
+        self._redis_client: Optional[redis.Redis] = None
+        self._redis_enabled = False
+
+        # Initialize Redis connection
+        try:
+            self._redis_client = redis.from_url(
+                settings.redis_url,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5
+            )
+            self._redis_client.ping()
+            self._redis_enabled = True
+            logger.info("OAuth service: Redis connected for state token storage")
+        except Exception as e:
+            logger.warning(f"OAuth service: Redis unavailable, using in-memory state storage: {e}")
+            self._redis_client = None
+            self._redis_enabled = False
 
     @staticmethod
     def is_provider_configured(provider: OAuthProvider) -> bool:
@@ -99,6 +118,68 @@ class OAuthService:
     def generate_state_token(self) -> str:
         """Generate CSRF protection state token"""
         return secrets.token_urlsafe(32)
+
+    def store_state_token(self, state: str, data: str = "", ttl: int = 600) -> bool:
+        """
+        Store OAuth state token with optional data.
+
+        Args:
+            state: The state token to store
+            data: Optional data to associate with the state (e.g., redirect URL)
+            ttl: Time to live in seconds (default: 10 minutes)
+
+        Returns:
+            True if stored successfully, False otherwise
+        """
+        key = f"oauth_state:{state}"
+
+        # Try Redis first
+        if self._redis_enabled:
+            try:
+                self._redis_client.setex(key, ttl, data)
+                return True
+            except Exception as e:
+                logger.error(f"Failed to store state in Redis: {e}")
+                self._redis_enabled = False
+                # Fall through to in-memory storage
+
+        # Fallback to in-memory storage
+        self._state_tokens[state] = data
+        logger.debug(f"Stored state token in memory (Redis unavailable)")
+        return True
+
+    def validate_state_token(self, state: str) -> Optional[str]:
+        """
+        Validate and consume OAuth state token (one-time use).
+
+        Args:
+            state: The state token to validate
+
+        Returns:
+            Associated data if valid, None if invalid or expired
+        """
+        key = f"oauth_state:{state}"
+
+        # Try Redis first
+        if self._redis_enabled:
+            try:
+                data = self._redis_client.get(key)
+                if data is not None:
+                    # Delete token (one-time use)
+                    self._redis_client.delete(key)
+                    return data
+            except Exception as e:
+                logger.error(f"Failed to validate state in Redis: {e}")
+                self._redis_enabled = False
+                # Fall through to in-memory storage
+
+        # Fallback to in-memory storage
+        if state in self._state_tokens:
+            data = self._state_tokens.pop(state)
+            logger.debug(f"Validated state token from memory (Redis unavailable)")
+            return data
+
+        return None
 
     def get_auth_url(self, provider: OAuthProvider, state: str) -> str:
         """

@@ -13,6 +13,8 @@ Endpoints:
 """
 
 import logging
+import uuid
+from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
@@ -416,7 +418,67 @@ async def single_logout(
     SAML Single Logout endpoint.
 
     Handles logout requests and responses from the IdP.
+
+    - SAMLRequest: IdP-initiated logout (IdP requests us to log out user)
+    - SAMLResponse: SP-initiated logout response (IdP acknowledges logout)
     """
-    # For now, just acknowledge the logout
     redirect_url = RelayState or "/"
+
+    # Handle IdP-initiated logout (SAMLRequest)
+    if SAMLRequest:
+        try:
+            # Decode the SAML logout request
+            import base64
+            import re
+
+            decoded = base64.b64decode(SAMLRequest)
+            request_xml = decoded.decode('utf-8')
+
+            # Extract NameID from logout request (simplified parsing)
+            name_id_match = re.search(r'<.*?NameID[^>]*>([^<]+)</.*?NameID>', request_xml)
+
+            if name_id_match:
+                name_id = name_id_match.group(1)
+
+                # Find user by email (assuming email format NameID)
+                from app.models import User
+                user = db.query(User).filter(User.email == name_id).first()
+
+                if user:
+                    # Revoke all refresh tokens for this user
+                    AuthService.revoke_all_user_tokens(db, str(user.id))
+                    logger.info(f"SAML SLO: Revoked all tokens for user {user.username}")
+
+            # Generate SAML LogoutResponse
+            service = SAMLService(db)
+            response_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<samlp:LogoutResponse
+    xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
+    xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"
+    ID="_response{uuid.uuid4().hex}"
+    Version="2.0"
+    IssueInstant="{datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}"
+    Destination="{redirect_url}">
+    <saml:Issuer>{service.sp_entity_id}</saml:Issuer>
+    <samlp:Status>
+        <samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/>
+    </samlp:Status>
+</samlp:LogoutResponse>"""
+
+            # Encode and redirect (simplified - production would properly sign)
+            encoded_response = base64.b64encode(response_xml.encode('utf-8')).decode('utf-8')
+            from urllib.parse import urlencode, quote
+            params = {"SAMLResponse": encoded_response}
+            if RelayState:
+                params["RelayState"] = RelayState
+
+            logout_redirect = f"{redirect_url}{'&' if '?' in redirect_url else '?'}{urlencode(params)}"
+            return RedirectResponse(url=logout_redirect, status_code=status.HTTP_302_FOUND)
+
+        except Exception as e:
+            logger.error(f"SAML SLO request processing failed: {e}")
+            # Fall through to simple redirect
+
+    # Handle SP-initiated logout response (SAMLResponse) or error cases
+    # Just acknowledge and redirect
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)

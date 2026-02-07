@@ -141,3 +141,31 @@ class RefreshToken(Base):
 
     def __repr__(self):
         return f"<RefreshToken(id={self.id}, user_id={self.user_id}, revoked={self.revoked})>"
+
+
+class AccountUnlockToken(Base):
+    """Account unlock tokens for self-service account recovery"""
+    __tablename__ = "account_unlock_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Token hash (SHA256) - never store plaintext
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+
+    # Token metadata
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used = Column(Boolean, default=False, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+
+    # Client information (for audit trail)
+    request_ip = Column(String(45), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("User", backref="account_unlock_tokens")
+
+    def __repr__(self):
+        return f"<AccountUnlockToken(id={self.id}, user_id={self.user_id}, used={self.used})>"
