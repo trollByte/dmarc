@@ -745,11 +745,15 @@ function dismissFeatureTooltip(target) {
 // ==========================================
 
 function showWelcomeEmptyState() {
-    const mainContent = document.getElementById('main-content');
-    if (!mainContent) return;
+    // Insert into dashboard section so it hides when navigating away
+    const dashboardSection = document.getElementById('page-dashboard');
+    if (!dashboardSection) return;
 
-    // Hide all sections
-    const sections = mainContent.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
+    // Prevent duplicate welcome states
+    if (document.getElementById('welcomeEmptyState')) return;
+
+    // Hide dashboard content sections
+    const sections = dashboardSection.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
     sections.forEach(section => {
         section.style.display = 'none';
     });
@@ -849,7 +853,7 @@ function showWelcomeEmptyState() {
 
     welcomeDiv.appendChild(features);
 
-    mainContent.appendChild(welcomeDiv);
+    dashboardSection.appendChild(welcomeDiv);
 }
 
 function hideWelcomeEmptyState() {
@@ -858,9 +862,9 @@ function hideWelcomeEmptyState() {
         welcomeState.remove();
     }
 
-    const mainContent = document.getElementById('main-content');
-    if (mainContent) {
-        const sections = mainContent.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
+    const dashboardSection = document.getElementById('page-dashboard');
+    if (dashboardSection) {
+        const sections = dashboardSection.querySelectorAll('.filter-bar, .stats-section, .charts-section, .table-section');
         sections.forEach(section => {
             section.style.display = '';
         });
