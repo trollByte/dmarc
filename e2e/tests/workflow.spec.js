@@ -123,20 +123,16 @@ test.describe('Full User Workflow', () => {
       const secondOptionValue = await domainFilter.locator('option').nth(1).getAttribute('value');
       await domainFilter.selectOption(secondOptionValue || '');
 
-      // Wait for API call triggered by filter change
-      await page.waitForResponse(
-        (response) => response.url().includes('/api/') && response.status() === 200
-      );
+      // Click "Apply" to trigger the filter — set up response listener first
+      await Promise.all([
+        page.waitForResponse(
+          (response) => response.url().includes('/api/') && response.status() === 200
+        ),
+        page.locator('#applyFiltersBtn').click(),
+      ]);
 
       // Dashboard should still be visible after filtering
       await expect(page.locator('#dashboardContainer')).toBeVisible();
-
-      // A notification about filtering may appear
-      const notification = page.locator('#notification');
-      if (await notification.isVisible().catch(() => false)) {
-        const text = await notification.textContent();
-        expect(text).toBeTruthy();
-      }
     }
   });
 
@@ -152,23 +148,26 @@ test.describe('Full User Workflow', () => {
 
     await expect(dateRangeFilter).toBeVisible();
 
-    // Change to "Last 7 days"
+    // Change to "Last 7 days" and click Apply
     await dateRangeFilter.selectOption('7');
-
-    // Wait for API response
-    await page.waitForResponse(
-      (response) => response.url().includes('/api/') && response.status() === 200
-    );
+    await Promise.all([
+      page.waitForResponse(
+        (response) => response.url().includes('/api/') && response.status() === 200
+      ),
+      page.locator('#applyFiltersBtn').click(),
+    ]);
 
     // Dashboard should still be visible
     await expect(page.locator('#dashboardContainer')).toBeVisible();
 
-    // Change to "All time"
+    // Change to "All time" and click Apply
     await dateRangeFilter.selectOption('all');
-
-    await page.waitForResponse(
-      (response) => response.url().includes('/api/') && response.status() === 200
-    );
+    await Promise.all([
+      page.waitForResponse(
+        (response) => response.url().includes('/api/') && response.status() === 200
+      ),
+      page.locator('#applyFiltersBtn').click(),
+    ]);
 
     await expect(page.locator('#dashboardContainer')).toBeVisible();
   });
@@ -194,23 +193,22 @@ test.describe('Full User Workflow', () => {
     await expect(page.locator('#exportSourcesCSV')).toBeVisible();
     await expect(page.locator('#exportPDF')).toBeVisible();
 
-    // Click "Reports (CSV)" export -- intercept the download request
-    const downloadPromise = page.waitForEvent('download').catch(() => null);
+    // Click "Reports (CSV)" export and wait for a response or notification
+    // The export uses fetch() internally, so set up listener before clicking
     const exportResponsePromise = page.waitForResponse(
       (response) => response.url().includes('/export/') && response.status() < 500
-    ).catch(() => null);
+    );
 
     await page.locator('#exportReportsCSV').click();
 
-    // Wait for either a download event or an API response (which may show a notification)
-    const [download, exportResponse] = await Promise.all([downloadPromise, exportResponsePromise]);
+    // Wait for the API response (with a reasonable timeout)
+    const exportResponse = await exportResponsePromise.catch(() => null);
 
-    // Either a file downloaded, or a notification appeared (e.g., "No reports found")
-    const notification = page.locator('#notification.show');
-    const hasDownload = download !== null;
+    // Either the API responded, or a notification appeared (e.g., "Preparing export...")
+    const notification = page.locator('#notification');
     const hasResponse = exportResponse !== null;
     const hasNotification = await notification.isVisible().catch(() => false);
 
-    expect(hasDownload || hasResponse || hasNotification).toBeTruthy();
+    expect(hasResponse || hasNotification).toBeTruthy();
   });
 });
