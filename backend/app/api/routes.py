@@ -182,6 +182,11 @@ async def list_reports(
         # Count records and total messages
         record_count = len(report.records)
         total_messages = sum(r.count for r in report.records)
+        pass_count = sum(
+            r.count for r in report.records
+            if r.dkim_result == 'pass' and r.spf_result == 'pass'
+        )
+        fail_count = total_messages - pass_count
 
         reports_data.append(ReportDetail(
             id=report.id,
@@ -196,7 +201,9 @@ async def list_reports(
             pct=report.pct,
             created_at=report.created_at,
             record_count=record_count,
-            total_messages=total_messages
+            total_messages=total_messages,
+            pass_count=pass_count,
+            fail_count=fail_count
         ))
 
     return ReportsListResponse(
@@ -223,6 +230,11 @@ async def get_report(
     # Count records and total messages
     record_count = len(report.records)
     total_messages = sum(r.count for r in report.records)
+    pass_count = sum(
+        r.count for r in report.records
+        if r.dkim_result == 'pass' and r.spf_result == 'pass'
+    )
+    fail_count = total_messages - pass_count
 
     return ReportDetail(
         id=report.id,
@@ -238,6 +250,8 @@ async def get_report(
         created_at=report.created_at,
         record_count=record_count,
         total_messages=total_messages,
+        pass_count=pass_count,
+        fail_count=fail_count,
         # Frontend compatibility fields
         policy_p=report.p,
         policy_sp=report.sp,

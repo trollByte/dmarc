@@ -2904,14 +2904,45 @@ async function loadRecordsTab() {
     const panel = document.getElementById('tab-records');
     if (!panel || !currentReportId) return;
 
+    // Rebuild the DOM structure that loadRecordsForReport() expects
     panel.textContent = '';
+
+    const infoDiv = document.createElement('div');
+    infoDiv.id = 'recordsInfo';
+
     const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'recordsLoading';
     loadingDiv.className = 'loading';
     loadingDiv.textContent = 'Loading records...';
-    panel.appendChild(loadingDiv);
+    infoDiv.appendChild(loadingDiv);
+
+    const table = document.createElement('table');
+    table.id = 'recordsTable';
+    table.className = 'records-table';
+    table.style.display = 'none';
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    ['Source IP', 'Count', 'DKIM', 'SPF', 'Disposition', 'Actions'].forEach(text => {
+        const th = document.createElement('th');
+        th.scope = 'col';
+        th.textContent = text;
+        headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    tbody.id = 'recordsTableBody';
+    table.appendChild(tbody);
+    infoDiv.appendChild(table);
+
+    const paginationDiv = document.createElement('div');
+    paginationDiv.id = 'recordsPagination';
+    infoDiv.appendChild(paginationDiv);
+
+    panel.appendChild(infoDiv);
 
     try {
-        await loadRecordsForReport(currentReportId, panel);
+        await loadRecordsForReport(currentReportId);
     } catch (error) {
         panel.textContent = '';
         const errorDiv = document.createElement('div');

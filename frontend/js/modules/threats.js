@@ -589,7 +589,11 @@
 
             try {
                 var response = await fetch(API_BASE + '/threat-intel/enrich-anomalies?days=7&limit=20');
-                if (!response.ok) throw new Error('HTTP ' + response.status);
+                if (!response.ok) {
+                    var errData = {};
+                    try { errData = await response.json(); } catch(e) {}
+                    throw new Error(errData.detail || 'HTTP ' + response.status);
+                }
                 var data = await response.json();
                 var items = Array.isArray(data) ? data : [];
 
@@ -681,7 +685,7 @@
             } catch (err) {
                 console.error('Failed to load enriched anomalies:', err);
                 container.textContent = '';
-                container.appendChild(el('div', { className: 'threat-error', textContent: 'Failed to load anomaly data' }));
+                container.appendChild(el('div', { className: 'threat-empty', textContent: err.message || 'Failed to load anomaly data' }));
             }
         },
 
